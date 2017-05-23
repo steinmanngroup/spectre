@@ -75,6 +75,7 @@ class DALTONPEExEnergyJob(calcit.dalton.DALTONJob):
     """
     def __init__(self, basename, **kwargs):
         calcit.dalton.DALTONJob.__init__(self, basename, **kwargs)
+
         self.runtype = 'peex'
 
     def __str__(self):
@@ -223,6 +224,10 @@ def generate_potentials(molecules, args):
         print ""
         if args.potential_script is not None:
             print "  custom script  : {}".format(args.potential_script)
+            print ""
+
+        print "  jobs per node    : {0:d}".format(args.potential_jobs_per_node)
+        print "  cpus per job     : {0:d}".format(args.potential_cpus_per_job)
 
     base = os.path.splitext(args.input)[0]
     safe_create_dir(base)
@@ -313,8 +318,10 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
 
     return DALTONLoPropJob(name,
                            custom_run_script=args.potential_script,
-                           basis_set='6_31pgp_loprop',
-                           scratch_directory=args.scratch_directory)
+                           basis_set=args.potential_basis,
+                           cores_per_job=args.potential_cpus_per_job,
+                           scratch_directory=args.scratch_directory,
+                           dft_functional=args.potential_functional)
 
 
 def build_potential(mol, name):
@@ -437,17 +444,23 @@ def compute_chromophores(mols, pots, chroms, args):
         print header("COMPUTING CHROMOPHORE EXCITED STATE PROPERTIES", 0)
 
         print "Settings:"
-        print "  chromophore names:  {0}".format(", ".join(args.c))
+        functional = "RHF"
+        if args.ex_functional is not None:
+            functional = args.ex_functional
+        print "  theory           : {0}/{1}".format(functional, args.ex_basis)
+        print "  chromophore names: {0}".format(", ".join(args.c))
         print "  number of states : {0}".format(args.ex_n)
         states = "all"
         if args.ex_state > 0:
             states = "{0}".format(args.ex_state)
         print "  coupling states  : {0}".format(states)
         print ""
-        functional = "RHF"
-        if args.ex_functional is not None:
-            functional = args.ex_functional
-        print "  theory           : {0}/{1}".format(functional, args.ex_basis)
+        if args.potential_script is not None:
+            print "  custom script  : {}".format(args.ex_script)
+            print ""
+
+        print "  jobs per node    : {0:d}".format(args.ex_jobs_per_node)
+        print "  cpus per job     : {0:d}".format(args.ex_cpus_per_job)
 
     # generate calcit jobs for DALTON calculation
     jobs, job_names = build_calcit_dalton_ex_jobs(mols, pots, chroms, args)
@@ -498,7 +511,7 @@ def build_hostlist(njpn, ncpj, args):
 
     # by default, we just assume that we are running
     # on one node (i.e. the one we are running on)
-    nodes = [socket.gethostname()]
+    nodes = ['localhost'] # [socket.gethostname()]
 
     slurm_nodelist = os.environ.get("SLURM_NODELIST", None)
     if slurm_nodelist is not None:
@@ -508,7 +521,8 @@ def build_hostlist(njpn, ncpj, args):
 
     if args.verbose:
         print(header("HOST LIST", 1))
-        print nodes, njpn, ncpj
+        for node in nodes:
+            print node, njpn, ncpj
 
     return nodes
 
@@ -537,9 +551,12 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chroms, args):
 
         jobs.append(
            DALTONPEExEnergyJob(name,
-               custom_run_script='../../dalton_excited.bash',
+               custom_run_script=args.ex_script,
                basis_set=args.ex_basis,
-               cores_per_job=args.ex_cpus_per_job)
+               cores_per_job=args.ex_cpus_per_job,
+               scratch_directory=args.scratch_directory,
+               dft_functional=args.ex_functional,
+               nexited_states=args.ex_n)
         )
 
         potname = jobs[-1].get_jobname()
@@ -895,7 +912,7 @@ if __name__ == "__main__":
 
     chr_group.add_argument("--ex-basis", default="pcseg-0")
     chr_group.add_argument("--ex-functional", default=None, help="Selects an DFT functional for excited state calculations. If not specified, HF is chosen.")
-
+    chr_group.add_argument("--ex-script", default='../../dalton_excited.bash')
     chr_group.add_argument("--ex-jobs-per-node", default=chr_jobs_per_node, type=int, help="Number of jobs to execute per node for embedded chromophores. This is number is usually lower than the potential counterpart. Default is %(default)s.")
     chr_group.add_argument("--ex-cpus-per-job", default=chr_cpus_per_job, type=int, help="Number of cores per job. This number should almost always be equal to the number of cores available on your node. Default is %(default)s.")
 
