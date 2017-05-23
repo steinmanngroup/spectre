@@ -221,6 +221,8 @@ def generate_potentials(molecules, args):
         print "  static potential : {}".format(stat_pot)
         print "  dynamic potential: {}".format(dyna_pot)
         print ""
+        if args.potential_script is not None:
+            print "  custom script  : {}".format(args.potential_script)
 
     base = os.path.splitext(args.input)[0]
     safe_create_dir(base)
@@ -310,7 +312,7 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
         xyz_file.write(s)
 
     return DALTONLoPropJob(name,
-                           custom_run_script='../../dalton_loprop.bash',
+                           custom_run_script=args.potential_script,
                            basis_set='6_31pgp_loprop',
                            scratch_directory=args.scratch_directory)
 
@@ -880,7 +882,7 @@ if __name__ == "__main__":
     potential_group.add_argument("--potential-isopol", dest="do_isopol", default=False, action="store_true")
     potential_group.add_argument("--potential-basis", default="6_31pgp_loprop")
     potential_group.add_argument("--potential-functional", default=None, help="Selects an DFT functional for excited state calculations. If not specified, HF is chosen.")
-    potential_group.add_argument("--potential-script", default=None)
+    potential_group.add_argument("--potential-script", default='../../dalton_loprop.bash')
     potential_group.add_argument("--potential-jobs-per-node", default=pot_jobs_per_node, type=int, help="Number of jobs to execute per node for potential calculation. This is number is usually equal to the number of cores available to you on a single node. Can be controlled with SLURM using the --ntasks-per-node option. Default is %(default)s.")
     potential_group.add_argument("--potential-cpus-per-job", default=pot_cpus_per_job, type=int, help="Number of cores per job. This number is usually low. Can be controlled with SLURM using the --cpus-per-task option. Default is %(default)s.")
 
