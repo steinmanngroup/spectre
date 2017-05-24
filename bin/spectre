@@ -63,6 +63,10 @@ class DALTONLoPropJob(calcit.dalton.DALTONJob):
         calcit.dalton.DALTONJob.__init__(self, basename, **kwargs)
         self.runtype = 'loprop'
 
+    def _program_substitutions(self):
+        self._run_script_substitutions['PROGPATH'] = os.environ.get('DALTON')
+        self._run_script_substitutions['LOPROP'] = os.environ.get('LOPROP')
+
     def __str__(self):
         return "DALTON LoProp ({0:s})".format(self.basename)
 
@@ -75,8 +79,8 @@ class DALTONPEExEnergyJob(calcit.dalton.DALTONJob):
     """
     def __init__(self, basename, **kwargs):
         calcit.dalton.DALTONJob.__init__(self, basename, **kwargs)
-
         self.runtype = 'peex'
+
 
     def __str__(self):
         return "DALTON PE-EX ({0:s})".format(self.basename)
@@ -521,8 +525,7 @@ def build_hostlist(njpn, ncpj, args):
 
     if args.verbose:
         print(header("HOST LIST", 1))
-        for node in nodes:
-            print node, njpn, ncpj
+        print nodes, njpn, ncpj
 
     return nodes
 
@@ -855,13 +858,19 @@ if __name__ == "__main__":
     try:
         os.environ['SCRATCH']
     except KeyError:
-        print("ERROR: SCRATCH environment not set to scratch area.")
+        print("ERROR: SCRATCH environment variable not set to scratch area.")
         env_errors += 1
 
     try:
         os.environ['DALTON']
     except KeyError:
         print("ERROR: DALTON environment variable not set to path of DALTON installation.")
+        env_errors += 1
+
+    try:
+        os.environ['LOPROP']
+    except KeyError:
+        print("ERROR: LOPROP environment variable not set to path of LOPROP installation.")
         env_errors += 1
 
     if env_errors > 0:

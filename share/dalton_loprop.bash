@@ -8,6 +8,9 @@
 #  JOB     : $JOB
 #  MEMORY  : $MEMORY
 #  NCPUS   : $NCPUS
+#  LOPROP  : $LOPROP
+#  MULMOM  : $MULMOM
+#  POLMOM  : $POLMOM
 #
 
 if [ ! -e $WORK_DIR/$JOB.loprop ]
@@ -43,16 +46,16 @@ then
     # if we have the files we need then we compute the LoProp properties we need
     # but be sure to bomb with a meaningful error message to help the user
     # as much as possible.
-    # TODO: Fixup the programs below to make it possible to supply path to
-    #       the loprop executable
+    # TODO: fix polarizability tensor and multipole moments through variable
+    #       replacements
     if [ -e loprop_input.tar.bz2 ]
     then
         tar xfj loprop_input.tar.bz2
 
         if [ -e AOONEINT -a -e DALTON.BAS -a -e SIRIFC -a -e AOPROPER -a -e RSPVEC ]
         then
-            export PYTHONPATH=/Users/css/Programs/loprop-1.0/lib/python2.7/site-packages:$PYTHONPATH
-            ~/Programs/loprop-1.0/bin/loprop.py -a 1 -l 0 -t . --decimal 9 > $JOB.loprop
+            export PYTHONPATH=$LOPROP/lib/python2.7/site-packages:$PYTHONPATH
+            $LOPROP/bin/loprop.py -a 1 -l 0 -t . --decimal 9 > $JOB.loprop
 
             rm -f RSPVEC AOPROPER SIRIFC DALTON.BAS AOONEINT
 
