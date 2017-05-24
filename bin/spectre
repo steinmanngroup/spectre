@@ -60,12 +60,19 @@ class DALTONLoPropJob(calcit.dalton.DALTONJob):
     """ A DALTON job to calculate LoProp properties
     """
     def __init__(self, basename, **kwargs):
+        self.mul_order = kwargs.get('multipole_order', 2) # default to charges, dipoles and quadrupoles
+        self.pol_order = kwargs.get('polarizability_order', 2) # default to anisotropic dipole-polarizabilities
         calcit.dalton.DALTONJob.__init__(self, basename, **kwargs)
         self.runtype = 'loprop'
 
     def _program_substitutions(self):
+        """ Obtaining the LoProp parameters requires the program to
+            know where DALTON is and where LoProp Is.
+        """
         self._run_script_substitutions['PROGPATH'] = os.environ.get('DALTON')
         self._run_script_substitutions['LOPROP'] = os.environ.get('LOPROP')
+        self._run_script_substitutions['MULMOM'] = "{0:d}".format(self.mul_order)
+        self._run_script_substitutions['POLMOM'] = "{0:d}".format(self.pol_order)
 
     def __str__(self):
         return "DALTON LoProp ({0:s})".format(self.basename)
@@ -216,9 +223,9 @@ def generate_potentials(molecules, args):
         print "  theory           : {0}/{1}".format(functional, args.potential_basis)
 
         stat_pot = "charges, dipoles and quadrupoles"
-        dyna_pot = "electric dipole polarizabilities"
+        dyna_pot = "electric dipole-dipole polarizabilities"
         if args.do_isopol:
-            dyna_pot = "isotropic electric dipole polarizabilities"
+            dyna_pot = "isotropic electric dipole-dipole polarizabilities"
 
         if not args.do_polarization:
             dyna_pot = "none"
@@ -320,12 +327,21 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
     with open("{0:s}.xyz".format(name), 'w') as xyz_file:
         xyz_file.write(s)
 
+    # compute the different kinds of polarizablities
+    pol_order = 2
+    if args.do_isopol:
+        pol_order = 1
+    if not args.do_polarization:
+        pol_order = 0
+
     return DALTONLoPropJob(name,
                            custom_run_script=args.potential_script,
                            basis_set=args.potential_basis,
                            cores_per_job=args.potential_cpus_per_job,
                            scratch_directory=args.scratch_directory,
-                           dft_functional=args.potential_functional)
+                           dft_functional=args.potential_functional,
+                           multipole_order=args.potential_multipole_order,
+                           polarizability_order=pol_order)
 
 
 def build_potential(mol, name):
@@ -573,6 +589,14 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chroms, args):
 
 
 def compute_properties(mols, chroms, job_names, args):
+    """ Extracts properties for chromophores from the excited state logfiles
+
+        Arguments:
+        mols -- molecules
+        chromes -- chromophores
+        job_names -- the names of the jobs
+        args -- spectre settings object
+    """
     assert len(chroms) == len(job_names)
 
     data = {}
@@ -587,6 +611,7 @@ def compute_properties(mols, chroms, job_names, args):
         os.chdir(name)
 
         energies, tr_dips, tr_charges = get_chromophore_peex_data(jobname, args)
+        #assert(molecule.getNumAtoms() == len(tr_charges[0]), "Data read from '{}' does not match number of atoms.".format(jobname))
 
         data[chrom] = {'energies': energies, 'tr_dips': tr_dips, 'tr_charges': tr_charges}
 
@@ -679,7 +704,7 @@ def build_chromophore_potential(potentials, *chroms):
 
     #exit()
 
-    return potential
+    return chromophore_potential
 
 
 def compute_couplings(mols, chroms, pots, tr_q, tr_d, args):
@@ -906,6 +931,7 @@ if __name__ == "__main__":
     potential_group.add_argument("--loprop-shell", type=str)
     potential_group.add_argument("--potential-no-pol", dest="do_polarization", default=True, action="store_false")
     potential_group.add_argument("--potential-isopol", dest="do_isopol", default=False, action="store_true")
+    potential_group.add_argument("--potential-multipole-order", type=int, default=2, choices=[0,1,2])
     potential_group.add_argument("--potential-basis", default="6_31pgp_loprop")
     potential_group.add_argument("--potential-functional", default=None, help="Selects an DFT functional for excited state calculations. If not specified, HF is chosen.")
     potential_group.add_argument("--potential-script", default='../../dalton_loprop.bash')

@@ -55,7 +55,7 @@ then
         if [ -e AOONEINT -a -e DALTON.BAS -a -e SIRIFC -a -e AOPROPER -a -e RSPVEC ]
         then
             export PYTHONPATH=$LOPROP/lib/python2.7/site-packages:$PYTHONPATH
-            $LOPROP/bin/loprop.py -a 1 -l 0 -t . --decimal 9 > $JOB.loprop
+            $LOPROP/bin/loprop.py -a $POLMOM -l $MULMOM -t . --decimal 9 > $JOB.loprop
 
             rm -f RSPVEC AOPROPER SIRIFC DALTON.BAS AOONEINT
 
