@@ -6,12 +6,12 @@ import bond
 import angle
 
 class Molecule(object):
-    """ A molecule.
+    """ A molecule
 
-        A molecule is at the minimum a collection of atoms.
+        A molecule is a collection of atoms.
 
-        The molecule class can also be asked to identify all bonds. This can be
-        quite costly since we use a brute force approach.
+        The molecule class can identify all bonds and angles in the molecule.
+        This can be quite costly since we use a brute force approach.
     """
     _bond_threshold = 0.45 # Added threshold for bonds. Replicates openbabel
 
@@ -119,11 +119,11 @@ class Molecule(object):
                     katm = bond2.getNbrAtomIdx(jatm)
                     yield angle.Angle(iatm, jatm, katm)
 
-    # specialized options to extract information stored in
+    # specialized functions to extract information stored in
     # other classes related to molecule
     def getCoordinates(self):
         """ Returns a numpy array with all the coordinates
-            of all the atoms in the molecule
+            of all the atoms in the molecule in angstrom
         """
         c = numpy.zeros((self.getNumAtoms(), 3))
         for iat, _atom in enumerate(self.getAtoms()):
@@ -140,3 +140,17 @@ class Molecule(object):
         assert n == self.getNumAtoms()
         for iat, _atom in enumerate(self.getAtoms()):
             _atom.setCoordinate(c[iat])
+
+
+    def getCenterOfMass(self):
+        """ Calculates the center of mass of the molecule """
+        mass = 0.0
+        Rcm = numpy.zeros(3)
+        for atom in self.getAtoms():
+            atom_mass = atom.getMass()
+            mass += atom_mass
+            Rcm += atom.getCoordinate() * atom_mass
+
+        assert(mass != 0.0, "Total mass of molecule cannot be zero.")
+
+        return Rcm / mass
