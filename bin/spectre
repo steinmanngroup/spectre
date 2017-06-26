@@ -10,7 +10,6 @@ import os.path
 import socket
 import subprocess
 import sys
-import tarfile
 import zipfile
 
 import numpy
@@ -958,12 +957,12 @@ def compute_total_coupling(mols, chroms, pots, props, args):
     J0 = numpy.zeros((n,n))
     J1 = numpy.zeros_like(J0)
 
-    for (ichrom, jchrom, iex, jex, imat, jmat) in chromophore_pair_ex_iterator(chroms, args):
-        J0[imat, jmat] = compute_J0(mols, props, ichrom, jchrom, iex, jex, args)
+    for (chromophore_i, chromophore_j, iex, jex, imat, jmat) in chromophore_pair_ex_iterator(chroms, args):
+        J0[imat, jmat] = compute_J0(mols, props, chromophore_i, chromophore_j, iex, jex, args)
         J0[jmat, imat] = J0[imat, jmat]
 
         if args.do_polarization:
-            J1[imat, jmat] = compute_J1(mols, pots, props, ichrom, jchrom, iex, jex, args)
+            J1[imat, jmat] = compute_J1(mols, pots, props, chromophore_i, chromophore_j, iex, jex, args)
             J1[jmat, imat] = J1[imat, jmat]
 
     return J0 + J1
@@ -1045,12 +1044,12 @@ def chromophore_pair_ex_iterator(chroms, args):
             matrix index for lth excitation in jth chromophore
 
     """
-    for i, ichrom in enumerate(chroms):
-        for j, jchrom in enumerate(chroms):
+    for i, chromophore_i in enumerate(chroms):
+        for j, chromophore_j in enumerate(chroms):
             if i > j:
-                for idx, ii in enumerate(range(i*args.ex_n, (i+1)*args.ex_n)):
-                    for jdx, jj in enumerate(range(j*args.ex_n, (j+1)*args.ex_n)):
-                        yield ichrom, jchrom, idx, jdx, ii, jj
+                for excitation_i, mat_index_i in enumerate(range(i*args.ex_n, (i+1)*args.ex_n)):
+                    for excitation_j, mat_index_j in enumerate(range(j*args.ex_n, (j+1)*args.ex_n)):
+                        yield chromophore_i, chromophore_j, excitation_i, excitation_j, mat_index_i, mat_index_j
 
 
 def matstat(mat):
@@ -1062,7 +1061,7 @@ def matstat(mat):
     print "MAX Element {2:9.6f} between elements {0:d} and {1:d}".format(idx+1, jdx+1, numpy.ravel(mat)[i])
 
 
-def write_dalton(energies, osc_strs, idx=1):
+def write_dalton_ex_data(energies, osc_strs, idx=1):
     """ Writes a DALTON style file based on relevant data
 
         Note: Rotational strengths are not supplied as of now
@@ -1234,10 +1233,10 @@ if __name__ == "__main__":
     properties = compute_chromophores(molecules, potentials, chromophores, args)
 
     for i, p in enumerate(properties, start=1):
-        write_dalton(p.getExcitationEnergies(), p.getOscillatorStrengths(), idx=i)
+        write_dalton_ex_data(p.getExcitationEnergies(), p.getOscillatorStrengths(), idx=i)
 
     if len(chromophores) > 1:
         exciton_energies, exciton_tr_dips, excitation_osc_str = couple_chromophores(molecules, chromophores, potentials, properties, args)
-        write_dalton(exciton_energies, excitation_osc_str)
+        write_dalton_ex_data(exciton_energies, excitation_osc_str)
 
     cleanup_work_directories(molecules, args)
