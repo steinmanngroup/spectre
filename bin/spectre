@@ -46,9 +46,8 @@ else:
     import pepytools.fields
 
 # custom molecule class
-from molecule import Molecule
-from molecule import Atom
-from molecule.formatters import XYZFormatter
+from spectre.molecule import Molecule, Atom
+from spectre.molecule.formatters import XYZFormatter
 
 aa2au = 1.8897261249935897
 au2ev = 27.21138602
