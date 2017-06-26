@@ -2,11 +2,12 @@
 #
 import argparse
 import errno
-import shutil
+import getpass
 import logging
 logging.basicConfig(level=logging.INFO) #WARNING
 import os
 import os.path
+import shutil
 import socket
 import subprocess
 import sys
@@ -476,7 +477,7 @@ def build_hostlist(njpn, ncpj, args):
 
     slurm_nodelist = os.environ.get("SLURM_NODELIST", None)
     if slurm_nodelist is not None:
-        s = subprocess.Popen("scontrol show hostname $SLURM_NODELIST")
+        s = subprocess.Popen("scontrol show hostname")
         o, e = s.communicate()
         nodes = list(set(o.split()))
 
@@ -1123,9 +1124,9 @@ if __name__ == "__main__":
     scratch_path = None
     scratch_path_str = "{}/SPECTRE_scratch_{}"
     if slurm_scratch is not None:
-        scratch_path = scratch_path_str.format(slurm_scratch, os.getlogin())
+        scratch_path = scratch_path_str.format(slurm_scratch, getpass.getuser())
     elif spectre_scratch is not None:
-        scratch_path = scratch_path_str.format(spectra_scratch, os.getlogin())
+        scratch_path = scratch_path_str.format(spectra_scratch, getpass.getuser())
 
     # check environment variables before computation starts
     # we will report on _ALL_ environment variables before
