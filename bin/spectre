@@ -57,7 +57,6 @@ SPECTRE is a tool to compute optical properties of molecules in any homo-
 or heterogenous environment.
 """
 
-# spectre exceptions are raised at various
 class SpectreValueError(ValueError):
     pass
 
@@ -169,6 +168,12 @@ class SpectreExcitedStateData(object):
         for i, (e, d) in enumerate(zip(self.excitation_energies, self.tr_dips), start=1):
             s += line.format(i, e, 0.0, 2./3.*e*d.dot(d), 0.0, 0.0, 0.0)
         return s
+
+
+class ExpandPath(argparse.Action):
+    """ ArgumentParser custom action to expand absolute paths """
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, os.path.abspath(values))
 
 
 def header(text, level, default_width=40):
@@ -451,7 +456,6 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
                            dft_functional=args.potential_functional,
                            multipole_order=args.potential_multipole_order,
                            polarizability_order=pol_order)
-
 
 def build_hostlist(njpn, ncpj, args):
     """ Build and return hostlist
@@ -1112,15 +1116,26 @@ def cleanup_work_directories(mols, args):
 
 if __name__ == "__main__":
 
+    # attempt to guess scratch area before calculation even begins
+    slurm_scratch = os.environ.get('SCRATCH', None)
+    spectre_scratch = os.environ.get('SPECTRE_TMPDIR', None)
+
+    scratch_path = None
+    scratch_path_str = "{}/SPECTRE_scratch_{}"
+    if slurm_scratch is not None:
+        scratch_path = scratch_path_str.format(slurm_scratch, os.getlogin())
+    elif spectre_scratch is not None:
+        scratch_path = scratch_path_str.format(spectra_scratch, os.getlogin())
+
     # check environment variables before computation starts
     # we will report on _ALL_ environment variables before
     # we potentially abort the program
     # a pretty fortran-style way of doing error checking here
     env_errors = 0
     try:
-        os.environ['SPECTRE_TMPDIR']
+        os.environ['SPECTRE']
     except KeyError:
-        print("ERROR: SPECTRE_TMPDIR environment variable not set to scratch area.")
+        print("ERROR: SPECTRE environment variable not pointing to installation share path.")
         env_errors += 1
 
     try:
@@ -1158,7 +1173,7 @@ if __name__ == "__main__":
 
     ap.add_argument("input", type=str, metavar="pdbfile")
     ap.add_argument("-v", "--verbose", action="store_true", default=False)
-    ap.add_argument("-s", "--scratch", dest="scratch_directory", default=os.environ['SPECTRE_TMPDIR'], help="Base directory for scratch storage. The default value points to the SPECTRE_TMPDIR environment variable. Default %(default)s")
+    ap.add_argument("-s", "--scratch", dest="scratch_directory", default=scratch_path, help="Base directory for scratch storage. Default is extracted from either SCRATCH or SPECTRE_TMPDIR environment variables. Default %(default)s")
     ap.add_argument("--dry-run", dest="is_dryrun", action="store_true", default=False)
 
     fragmentation_group = ap.add_argument_group("Fragmentation")
@@ -1171,7 +1186,7 @@ if __name__ == "__main__":
     potential_group.add_argument("--potential-multipole-order", type=int, default=2, choices=[0,1,2], help="Highest order multipole moment of the static part of the embedding potential. Choices are: %(choices)s. Default is %(default)s.")
     potential_group.add_argument("--potential-basis", metavar='BASIS', default="6_31pgp_loprop", help="Basis set to use for embedding potential calculations. Default is %(default)s.")
     potential_group.add_argument("--potential-functional", metavar='FUNCTIONAL', default=None, help="Selects an DFT functional for excited state calculations. If not specified, HF is chosen as the default.")
-    potential_group.add_argument("--potential-script", default='../../dalton_loprop.bash', metavar="SCRIPT", help="Script to carry out the calculations nescessary for the LoProp potential.")
+    potential_group.add_argument("--potential-script", default=os.environ['SPECTRE'] +'/share/dalton_loprop.bash', metavar="SCRIPT", action=ExpandPath, help="Script to carry out the calculations nescessary for the LoProp potential. Default: '%(default)s'")
     potential_group.add_argument("--potential-jobs-per-node", default=pot_jobs_per_node, type=int, metavar="JOBS_PER_NODE", help="Number of jobs to execute per node for potential calculation. This is number is usually equal to the number of cores available to you on a single node. Can be controlled with SLURM using the --ntasks-per-node option. Default is %(default)s.")
     potential_group.add_argument("--potential-cpus-per-job", default=pot_cpus_per_job, type=int, metavar="CPUS_PER_JOB", help="Number of cores per job. This number is usually low. Can be controlled with SLURM using the --cpus-per-task option. Default is %(default)s.")
 
@@ -1184,7 +1199,7 @@ if __name__ == "__main__":
 
     chr_group.add_argument("--ex-basis", default="pcseg-0", metavar='BASIS', help="Basis set to use for the excited state calculations and coupling parameters. Default is %(default)s.")
     chr_group.add_argument("--ex-functional", default=None, metavar='FUNCTIONAL', help="Selects a density functional for excited state calculations. If not specified, HF is chosen.")
-    chr_group.add_argument("--ex-script", default='../../dalton_excited.bash', metavar="SCRIPT")
+    chr_group.add_argument("--ex-script", default=os.environ['SPECTRE'] +'/share/dalton_excited.bash', metavar="SCRIPT", action=ExpandPath)
     chr_group.add_argument("--ex-jobs-per-node", default=chr_jobs_per_node, type=int, metavar="JOBS_PER_NODE", help="Number of jobs to execute per node for embedded chromophores. This is number is usually lower than the potential counterpart. Default is %(default)s.")
     chr_group.add_argument("--ex-cpus-per-job", default=chr_cpus_per_job, type=int, metavar="CPUS_PER_JOB", help="Number of cores per job. This number should almost always be equal to the number of cores available on your node. Default is %(default)s.")
 
