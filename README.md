@@ -35,6 +35,11 @@ peptyools can be obtained from [gitlab](https://gitlab.com/cstein/pepytools).
 
 Remember to add your installation directory to the `PYTHONPATH` environment variable.
 
+### LoProp for Dalton
+LoProp for Dalton can be obtained from [github](https://github.com/vahtras/loprop).
+
+Remember to export the installation directory to `LOPROP` so SPECTRE can find it.
+
 ### DALTON
 Finally, you will need a licensed copy of the DALTON quantum chemistry program.
 See [http://daltonprogram.org/](http://daltonprogram.org/) on how to obtain a license and the source code.
