@@ -13,6 +13,9 @@
 #  POLMOM  : $POLMOM
 #
 
+export PATH=$PATH
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+
 if [ ! -e $WORK_DIR/$JOB.loprop ]
 then
     # if the .loprop log file does not exist we first check to see if
@@ -26,7 +29,12 @@ then
         export DALTON_TMPDIR=$SCRATCH
         export DALTON_NUM_MPI_PROCS=$NCPUS
         export OMP_NUM_THREADS=1
-        #export DALTON_LAUNCHER="srun"
+
+        # in SLURM we prefer to use srun
+        #if [ -z ${SLURM_JOB_NAME+x} ]
+        #then
+        #    export DALTON_LAUNCHER="srun"
+        #fi
 
         # run the calculation
         $PROGPATH/dalton -mb $MEMORY -d -noarch -nobackup -noappend -get 'AOONEINT DALTON.BAS SIRIFC AOPROPER RSPVEC' -ow $JOB.dal > $JOB.dalout

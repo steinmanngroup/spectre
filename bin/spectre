@@ -33,6 +33,7 @@ else:
 
 try:
     import calcit
+    import calcit.process
 except ImportError:
     print("CalcIt not found in your PYTHONPATH environment variable.")
     sys.exit()
@@ -90,6 +91,8 @@ class DALTONLoPropJob(calcit.dalton.DALTONJob):
             Obtaining the LoProp parameters requires the program to
             know where DALTON is and where LoProp Is.
         """
+        self._run_script_substitutions['PATH'] = os.environ.get('PATH')
+        self._run_script_substitutions['LD_LIBRARY_PATH'] = os.environ.get('LD_LIBRARY_PATH')
         self._run_script_substitutions['PROGPATH'] = os.environ.get('DALTON')
         self._run_script_substitutions['LOPROP'] = os.environ.get('LOPROP')
         self._run_script_substitutions['MULMOM'] = "{0:d}".format(self.mul_order)
@@ -106,9 +109,20 @@ class DALTONPEExEnergyJob(calcit.dalton.DALTONJob):
     """ A DALTON job to calculate embedded (PE) excitated state calculations
     """
     def __init__(self, basename, **kwargs):
+        self.nexcited_states = kwargs.get('nexcited_states', 4)
         calcit.dalton.DALTONJob.__init__(self, basename, **kwargs)
         self.runtype = 'peex'
 
+    def _program_substitutions(self):
+        """ Substitutes information relevant
+            Obtaining the LoProp parameters requires the program to
+            know where DALTON is and where LoProp Is.
+        """
+        self._run_script_substitutions['PATH'] = os.environ.get('PATH')
+        self._run_script_substitutions['LD_LIBRARY_PATH'] = os.environ.get('LD_LIBRARY_PATH')
+        self._run_script_substitutions['PROGPATH'] = os.environ.get('DALTON')
+
+        self._comp_chem_substitutions['NEXCITATIONS'] = self.nexcited_states
 
     def __str__(self):
         return "DALTON PE-EX ({0:s})".format(self.basename)
@@ -333,7 +347,9 @@ def generate_potentials(molecules, args):
         print "  jobs per node    : {0:d}".format(args.potential_jobs_per_node)
         print "  cpus per job     : {0:d}".format(args.potential_cpus_per_job)
 
+    # base working directory for job
     base = os.path.splitext(args.input)[0]
+    print "BASE: ", base
     safe_create_dir(base)
     os.chdir(base)
 
@@ -347,7 +363,7 @@ def generate_potentials(molecules, args):
     jobs_per_node = args.potential_jobs_per_node
     work_dir = os.getcwd()
     remote_shell = 'ssh'
-    calcit_paths = calcit.util.directories('/Users/css/Programs/calcit-0.1.0/bin/calcit')
+    calcit_paths = calcit.util.directories(os.environ['CALCIT'] + '/bin/calcit')
     do_execute = not args.is_dryrun
 
     calcit.process_jobs(port, authorization_key,
@@ -396,8 +412,11 @@ def build_calcit_dalton_loprop_jobs(molecules, args):
         try:
             build_potential(molecule, name)
         except (OSError, IOError) as e:
-            if type(e) is OSError:  # directory is not
+            if type(e) is OSError:  # directory is not created
                 safe_create_dir(name)
+
+            if type(e) is IOError:  # log-file is not found but we managed to change dir
+                os.chdir('..')
 
             os.chdir(name)
             jobs.append(build_calcit_dalton_loprop_job(molecule, name, args))
@@ -477,8 +496,7 @@ def build_hostlist(njpn, ncpj, args):
 
     slurm_nodelist = os.environ.get("SLURM_NODELIST", None)
     if slurm_nodelist is not None:
-        s = subprocess.Popen("scontrol show hostname")
-        o, e = s.communicate()
+        o, e, dt = calcit.process.execute("scontrol show hostname")
         nodes = list(set(o.split()))
 
     if args.verbose:
@@ -491,7 +509,11 @@ def build_hostlist(njpn, ncpj, args):
 def build_potential(mol, name):
     """ Builds a potential file from the LoProp data
 
-        and optionally (currently never) writes it to disk
+        and optionally (currently never) writes it to disk.
+
+        This method is able to raise two different exceptions:
+        IOError -- if the file is not found
+        OSError -- if the scratch directory is not found
 
         Arguments:
         mol -- the molecule for which to construct the potential for
@@ -636,7 +658,7 @@ def compute_chromophores(mols, pots, chroms, args):
     jobs_per_node = args.ex_jobs_per_node
     work_dir = os.getcwd()
     remote_shell = 'ssh'
-    calcit_paths = calcit.util.directories('/Users/css/Programs/calcit-0.1.0/bin/calcit')
+    calcit_paths = calcit.util.directories(os.environ['CALCIT'] + '/bin/calcit')
     do_execute = not args.is_dryrun
 
     calcit.process_jobs(port, authorization_key,
@@ -680,7 +702,7 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chroms, args):
                cores_per_job=args.ex_cpus_per_job,
                scratch_directory=args.scratch_directory,
                dft_functional=args.ex_functional,
-               nexited_states=args.ex_n)
+               nexcited_states=args.ex_n)
         )
 
         potname = jobs[-1].get_jobname()
@@ -903,15 +925,11 @@ def compute_total_coupling(mols, chroms, pots, props, args):
         tr_q_i = props[ichrom].getTransitionDensityFittedCharges()[iex]
         tr_q_j = props[jchrom].getTransitionDensityFittedCharges()[jex]
 
-        #print ichrom, jchrom,
-
-        #print args
         if args.coupling_with_moments:
             if args.coupling_qfit_mom == 0:
                 return J0_tr_q_kernel(coord_i, coord_j, tr_q_i, tr_q_j)
             else:
                 raise NotImplementedError("J0 Not implemented for moments higher than charges.")
-            #print props[ichrom], props[jchrom]
         else:
             raise NotImplementedError("Transition dipole J0 couplings not implemented yet.")
 
@@ -1137,6 +1155,12 @@ if __name__ == "__main__":
         os.environ['SPECTRE']
     except KeyError:
         print("ERROR: SPECTRE environment variable not pointing to installation share path.")
+        env_errors += 1
+
+    try:
+        os.environ['CALCIT']
+    except KeyError:
+        print("ERROR: CALCIT environment variable not pointing to installation path.")
         env_errors += 1
 
     try:
