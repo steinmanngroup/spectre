@@ -29,6 +29,7 @@ Remember to add your installation directory to the `PYTHONPATH` environment vari
 CalcIt can be obtained from [github](https://github.com/cstein/calcit).
 
 Remember to add your installation directory to the `PYTHONPATH` environment variable.
+Remember to export the installation directory to `CALCIT` so SPECTRE can find it.
 
 ### pepytools
 peptyools can be obtained from [gitlab](https://gitlab.com/cstein/pepytools).
@@ -45,6 +46,7 @@ Finally, you will need a licensed copy of the DALTON quantum chemistry program.
 See [http://daltonprogram.org/](http://daltonprogram.org/) on how to obtain a license and the source code.
 
 In order for SPECTRE to know where DALTON is you must export the `DALTON` environment variable that points to the folder where you compiled DALTON.
+SPECTRE also needs to know where CALCIT is installed (slave.py script imports stuff from calcit)
 For example
 
     export DALTON=/path/to/where/dalton/was/built
