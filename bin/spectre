@@ -1224,6 +1224,10 @@ if __name__ == "__main__":
     potential_group.add_argument("--potential-jobs-per-node", default=pot_jobs_per_node, type=int, metavar="JOBS_PER_NODE", help="Number of jobs to execute per node for potential calculation. This is number is usually equal to the number of cores available to you on a single node. Can be controlled with SLURM using the --ntasks-per-node option. Default is %(default)s.")
     potential_group.add_argument("--potential-cpus-per-job", default=pot_cpus_per_job, type=int, metavar="CPUS_PER_JOB", help="Number of cores per job. This number is usually low. Can be controlled with SLURM using the --cpus-per-task option. Default is %(default)s.")
 
+    chr_select_group = ap.add_mutually_exclusive_group()
+    chr_select_group.add_argument('-r', metavar="DISTANCE", type=float, default=-1.0, help="Select fragments within DISTANCE of -c.")
+    chr_select_group.add_argument('-a', metavar="FRAGMENTS", nargs='+', type=int, help="Appends the FRAGMENTS to list of chromophores.")
+
     chr_group = ap.add_argument_group("Excited State Chromophore Calculations")
     chr_group.add_argument("-c",# "--chromophores",
                            type=str, nargs="+", metavar="resname")
