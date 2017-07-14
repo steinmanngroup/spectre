@@ -55,18 +55,27 @@ aa2au = 1.8897261249935897
 au2ev = 27.21138602
 
 __doc__ = """
-SPECTRE is a tool to compute optical properties of molecules in any homo-
-or heterogenous environment.
+SPECTRE computes absorption spectra of chromophores in heterogenous
+environments.
+
+SPECTRE uses a three-step procedure to compute the exciton state of a molecule:
+1) Compute embedding potential of ALL molecules in the input.
+2) Compute excited state properties of each of the chromophores.
+3) Assemble and compute elements of the Foerster matrix from 2) to obtain
+   the coupled excited state spectrum of the chromophores.
 """
 
 class SpectreValueError(ValueError):
     pass
 
+
 class SpectrePotentialValueError(SpectreValueError):
     pass
 
+
 class SpectreExcitedStateValueError(SpectreValueError):
     pass
+
 
 class DALTONLoPropJob(calcit.dalton.DALTONJob):
     """ A DALTON job to calculate LoProp properties
@@ -511,7 +520,7 @@ def build_potential(mol, name):
 
         and optionally (currently never) writes it to disk.
 
-        This method is able to raise two different exceptions:
+        This method can raise two different exceptions:
         IOError -- if the file is not found
         OSError -- if the scratch directory is not found
 
