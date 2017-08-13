@@ -1205,40 +1205,37 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser(description=__doc__)
 
-    ap.add_argument("input", type=str, metavar="pdbfile")
+    ap.add_argument("input", type=str, metavar="FILE", help="Input .pdb file.")
     ap.add_argument("-v", "--verbose", action="store_true", default=False)
-    ap.add_argument("-s", "--scratch", dest="scratch_directory", default=scratch_path, help="Base directory for scratch storage. Default is extracted from either SCRATCH or SPECTRE_TMPDIR environment variables. Default %(default)s")
-    ap.add_argument("--dry-run", dest="is_dryrun", action="store_true", default=False)
+    ap.add_argument("-s", "--scratch", dest="scratch_directory", metavar="DIRECTORY", default=scratch_path, help="Base directory for scratch storage. Default is extracted from either SCRATCH or SPECTRE_TMPDIR environment variables. Default %(default)s.")
+    ap.add_argument("--dry-run", dest="is_dryrun", action="store_true", default=False, help="Specify this flag to skip any computations in either embedding potential calculations or excited state calculations. If the excited state calculations are present SPECTRE will compute the coupled spectrum.")
 
     fragmentation_group = ap.add_argument_group("Fragmentation")
-    fragmentation_group.add_argument("-f", "--frag-settings", type=str, metavar="FragIt .ini file", default=None)
+    fragmentation_group.add_argument("-f", type=str, metavar="FILE", default=None, help="")
 
     potential_group = ap.add_argument_group("Embedding Potential Calculations")
-    #potential_group.add_argument("--loprop-shell", type=str)
-    potential_group.add_argument("-p", dest="potential", default=None, metavar="POTENTIAL", help="Adds a 'constant' potential to the calculation.")
+    potential_group.add_argument("-p", dest="potential", default=None, metavar="POTENTIAL", help="Adds a constant potential to the embedding calculations and couplings.")
     potential_group.add_argument("--potential-no-pol", dest="do_polarization", default=True, action="store_false", help="Set this flag to disable polarization effects. This will also remove screening in the couplings between chromophores.")
     potential_group.add_argument("--potential-isopol", dest="do_isopol", default=False, action="store_true", help="Set this flag to only do isotropic polarizabilities instead of the full anisotropic polarizabilities.")
     potential_group.add_argument("--potential-multipole-order", type=int, default=2, choices=[0,1,2], help="Highest order multipole moment of the static part of the embedding potential. Choices are: %(choices)s. Default is %(default)s.")
     potential_group.add_argument("--potential-basis", metavar='BASIS', default="6_31pgp_loprop", help="Basis set to use for embedding potential calculations. Default is %(default)s.")
     potential_group.add_argument("--potential-functional", metavar='FUNCTIONAL', default=None, help="Selects an DFT functional for excited state calculations. If not specified, HF is chosen as the default.")
-    potential_group.add_argument("--potential-script", default=os.environ['SPECTRE'] +'/share/dalton_loprop.bash', metavar="SCRIPT", action=ExpandPath, help="Script to carry out the calculations nescessary for the LoProp potential. Default: '%(default)s'")
+    potential_group.add_argument("--potential-script", default=os.environ['SPECTRE'] +'/share/dalton_loprop.bash', metavar="SCRIPT", action=ExpandPath, help="Script to the LoProp potential for each chromophore. Default: %(default)s.")
     potential_group.add_argument("--potential-jobs-per-node", default=pot_jobs_per_node, type=int, metavar="JOBS_PER_NODE", help="Number of jobs to execute per node for potential calculation. This is number is usually equal to the number of cores available to you on a single node. Can be controlled with SLURM using the --ntasks-per-node option. Default is %(default)s.")
     potential_group.add_argument("--potential-cpus-per-job", default=pot_cpus_per_job, type=int, metavar="CPUS_PER_JOB", help="Number of cores per job. This number is usually low. Can be controlled with SLURM using the --cpus-per-task option. Default is %(default)s.")
 
-    chr_select_group = ap.add_mutually_exclusive_group()
-    chr_select_group.add_argument('-r', metavar="DISTANCE", type=float, default=-1.0, help="Select fragments within DISTANCE of -c.")
-    chr_select_group.add_argument('-a', metavar="FRAGMENTS", nargs='+', type=int, help="Appends the FRAGMENTS to list of chromophores.")
 
     chr_group = ap.add_argument_group("Excited State Chromophore Calculations")
-    chr_group.add_argument("-c",# "--chromophores",
-                           type=str, nargs="+", metavar="resname")
+    chr_group.add_argument("-c", type=str, nargs="+", metavar="NAME", help="Selects residue names to be excitonically coupled.")
+    chr_group.add_argument('-r', metavar="DISTANCE", type=float, default=-1.0, help="Select additional fragments within DISTANCE of fragments from -c to be coupled excitonically. Mutually exclusive with -a.")
+    chr_group.add_argument('-a', metavar="ID", nargs='+', type=int, help="Appends fragment indices to list of chromophores that are to be coupled excitonically. Mutually exclusive with -r.")
 
-    chr_group.add_argument("--ex-n", type=int, metavar="N", default=4, help="Number of excited states to compute for each chromophore. Default is %(default)s")
+    chr_group.add_argument("-n", dest='ex_n', type=int, metavar="N", default=4, help="Number of excited states N to compute for each chromophore. Default is %(default)s.")
     chr_group.add_argument("--ex-state", type=int, default=0, help="State(s) to couple between chromophores.")
 
     chr_group.add_argument("--ex-basis", default="pcseg-0", metavar='BASIS', help="Basis set to use for the excited state calculations and coupling parameters. Default is %(default)s.")
     chr_group.add_argument("--ex-functional", default=None, metavar='FUNCTIONAL', help="Selects a density functional for excited state calculations. If not specified, HF is chosen.")
-    chr_group.add_argument("--ex-script", default=os.environ['SPECTRE'] +'/share/dalton_excited.bash', metavar="SCRIPT", action=ExpandPath)
+    chr_group.add_argument("--ex-script", default=os.environ['SPECTRE'] +'/share/dalton_excited.bash', metavar="SCRIPT", action=ExpandPath, help="Script to compute excited state calculations. Default: %(default)s.")
     chr_group.add_argument("--ex-jobs-per-node", default=chr_jobs_per_node, type=int, metavar="JOBS_PER_NODE", help="Number of jobs to execute per node for embedded chromophores. This is number is usually lower than the potential counterpart. Default is %(default)s.")
     chr_group.add_argument("--ex-cpus-per-job", default=chr_cpus_per_job, type=int, metavar="CPUS_PER_JOB", help="Number of cores per job. This number should almost always be equal to the number of cores available on your node. Default is %(default)s.")
 
