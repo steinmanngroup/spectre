@@ -1214,7 +1214,7 @@ if __name__ == "__main__":
     fragmentation_group.add_argument("-f", type=str, metavar="FILE", default=None, help="")
 
     potential_group = ap.add_argument_group("Embedding Potential Calculations")
-    potential_group.add_argument("-p", dest="potential", default=None, metavar="POTENTIAL", help="Adds a constant potential to the embedding calculations and couplings.")
+    potential_group.add_argument("-p", dest="potential", default=None, metavar="POTENTIAL", help="Adds a 'constant' PE-potential to the calculation, for example a protein or solvent shell.")
     potential_group.add_argument("--potential-no-pol", dest="do_polarization", default=True, action="store_false", help="Set this flag to disable polarization effects. This will also remove screening in the couplings between chromophores.")
     potential_group.add_argument("--potential-isopol", dest="do_isopol", default=False, action="store_true", help="Set this flag to only do isotropic polarizabilities instead of the full anisotropic polarizabilities.")
     potential_group.add_argument("--potential-multipole-order", type=int, default=2, choices=[0,1,2], help="Highest order multipole moment of the static part of the embedding potential. Choices are: %(choices)s. Default is %(default)s.")
