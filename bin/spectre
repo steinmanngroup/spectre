@@ -1208,7 +1208,7 @@ if __name__ == "__main__":
     ap.add_argument("input", type=str, metavar="FILE", help="Input .pdb file.")
     ap.add_argument("-v", "--verbose", action="store_true", default=False)
     ap.add_argument("-s", "--scratch", dest="scratch_directory", metavar="DIRECTORY", default=scratch_path, help="Base directory for scratch storage. Default is extracted from either SCRATCH or SPECTRE_TMPDIR environment variables. Default %(default)s.")
-    ap.add_argument("--dry-run", dest="is_dryrun", action="store_true", default=False, help="Specify this flag to skip any computations in either embedding potential calculations or excited state calculations. If the excited state calculations are present SPECTRE will compute the coupled spectrum.")
+    ap.add_argument("--dryrun", dest="is_dryrun", dest="dryrun", action="store_true", default=False, help="Specify this flag to skip any computations in either embedding potential calculations or excited state calculations. If the excited state calculations are present SPECTRE will compute the coupled spectrum.")
 
     fragmentation_group = ap.add_argument_group("Fragmentation")
     fragmentation_group.add_argument("-f", type=str, metavar="FILE", default=None, help="")
