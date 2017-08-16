@@ -32,7 +32,7 @@ Remember to add your installation directory to the `PYTHONPATH` environment vari
 Remember to export the installation directory to `CALCIT` so SPECTRE can find it.
 
 ### pepytools
-peptyools can be obtained from [gitlab](https://gitlab.com/cstein/pepytools).
+peptyools can be obtained from [github](https://github.com/steinmanngroup/pepytools).
 
 Remember to add your installation directory to the `PYTHONPATH` environment variable.
 
