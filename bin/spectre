@@ -77,6 +77,9 @@ class SpectreExcitedStateValueError(SpectreValueError):
     pass
 
 
+class SpectreRuntimeError(RuntimeError):
+    pass
+
 class DALTONLoPropJob(calcit.dalton.DALTONJob):
     """ A DALTON job to calculate LoProp properties
     """
@@ -677,6 +680,9 @@ def compute_chromophores(mols, pots, chroms, args):
 
     # generate calcit jobs for DALTON calculation
     jobs, job_names = build_calcit_dalton_ex_jobs(mols, pots, chroms, args)
+    if len(jobs) == 0:
+        raise SpectreRuntimeError("No chromophores identified with tag(s) '{}'".format(', '.join(args.c)))
+
 
     # process jobs
     port = 2048
@@ -768,8 +774,8 @@ def compute_chromophore_properties(mols, chroms, job_names, args):
             energies, tr_dips, tr_charges = get_chromophore_peex_data(jobname, args)
         except IOError as e:
             if args.is_dryrun:
-                print("You requested --dry-run but the output file '{0:s}.out' was not found.".format(jobname))
-                print("Please re-run without --dry-run to compute all files.")
+                print("You requested --dryrun but the output file '{0:s}.out' was not found.".format(jobname))
+                print("Please re-run without --dryrun to compute all files.")
             else:
                 print("The file '{0:s}.out' was not found. There could be a problem with the calculation so please check all output in the folder {1:s}.".format(jobname, name))
             exit()
