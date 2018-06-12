@@ -217,7 +217,12 @@ class SpectreExcitedStateData(object):
 class ExpandPath(argparse.Action):
     """ ArgumentParser custom action to expand absolute paths """
     def __call__(self, parser, namespace, values, option_string=None):
-        setattr(namespace, self.dest, os.path.abspath(values))
+        print "argparse.Action ExpandPath"
+        print values
+        if values is None:
+            setattr(namespace, self.dest, None)
+        else:
+            setattr(namespace, self.dest, os.path.abspath(values))
 
 
 def header(text, level, default_width=40):
@@ -663,25 +668,26 @@ def compute_chromophores(mols, pots, chroms, args):
         functional = "RHF"
         if args.ex_functional is not None:
             functional = args.ex_functional
-        print "  theory           : {0}/{1}".format(functional, args.ex_basis)
-        print "  chromophore names: {0}".format(", ".join(args.c))
-        print "  number of states : {0}".format(args.ex_n)
+        print "  theory              : {0}/{1}".format(functional, args.ex_basis)
+        print "  chromophore names   : {0}".format(", ".join(args.c))
+        print "  number of states    : {0}".format(args.ex_n)
         states = "all"
         if args.ex_state > 0:
             states = "{0}".format(args.ex_state)
-        print "  coupling states  : {0}".format(states)
+        print "  coupling states     : {0}".format(states)
         print ""
         if args.potential_script is not None:
-            print "  custom script  : {}".format(args.ex_script)
+            print "  custom script     : {}".format(args.ex_script)
             print ""
+
+        if args.potential is not None:
+            print "  external potential: {}".format(args.potential)
 
         print "  jobs per node    : {0:d}".format(args.ex_jobs_per_node)
         print "  cpus per job     : {0:d}".format(args.ex_cpus_per_job)
 
     # generate calcit jobs for DALTON calculation
     jobs, job_names = build_calcit_dalton_ex_jobs(mols, pots, chroms, args)
-    if len(jobs) == 0:
-        raise SpectreRuntimeError("No chromophores identified with tag(s) '{}'".format(', '.join(args.c)))
 
 
     # process jobs
@@ -717,11 +723,17 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chroms, args):
     """
 
     #
+    #print "build_calcit_dalton_ex_jobs"
+    #print "----"
+    #print "molecules   :", molecules
+    #print "potentials  :", pots
+    #print "chromophores:", chroms
+    #print "----"
     job_names = []
     jobs = []
     for i, chrom in enumerate(chroms, start=1):
         molecule = molecules[chrom]
-        potential = build_chromophore_potential(pots, chrom)
+        potential = build_chromophore_potential(pots, args, chrom)
 
         name = "{0:04d}_{1:s}".format(i, molecule.getName())
 
@@ -744,6 +756,9 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chroms, args):
 
         job_names.append(potname)
         os.chdir("..")
+
+    if len(jobs) == 0:
+        raise SpectreRuntimeError("No chromophores identified with tag(s) '{}'".format(', '.join(args.c)))
 
     return jobs, job_names
 
@@ -969,7 +984,7 @@ def compute_total_coupling(mols, chroms, pots, props, args):
     def compute_J1(mols, pots, props, ichrom, jchrom, iex, jex, args):
         # 1) build potential without I and J in and make it
         #     #    a transition potential (i.e. 0'es in static charge dist)
-        potij = build_chromophore_potential(pots, ichrom, jchrom)
+        potij = build_chromophore_potential(pots, args, ichrom, jchrom)
         potij.make_transition_potential()
 
         imol = mols[ichrom]
@@ -1050,11 +1065,12 @@ def J0_tr_q_kernel(coord_i, coord_j, tr_q_i, tr_q_j):
     return J0
 
 
-def build_chromophore_potential(potentials, *chroms):
+def build_chromophore_potential(potentials, args, *chroms):
     """ Build potential for chromophores listed in the args list
 
         Arguments:
         potentials -- all potentials for each part of the system
+        args -- spectre settings object
 
         Variable Arguments:
         chroms -- list of chromophores indices
@@ -1072,10 +1088,15 @@ def build_chromophore_potential(potentials, *chroms):
             continue
         idx_potentials.append(j)
 
-    # c_pot now includes a list of potentials we actually need
+    # idx_potentials is a list of potentials we actually need
     assert len(idx_potentials) != 0
     idx = idx_potentials[0]
-    chromophore_potential = potentials[idx]
+
+    # external 'constant' potentials are added first
+    if args.potential is not None:
+        chromophore_potential = pepytools.Potential.from_file(args.potential) + potentials[idx]
+    else:
+        chromophore_potential = potentials[idx]
     for idx_potential in idx_potentials[1:]:
         chromophore_potential = chromophore_potential + potentials[idx_potential]
 
@@ -1238,7 +1259,6 @@ if __name__ == "__main__":
     fragmentation_group.add_argument("-f", type=str, dest='frag_settings', metavar="FILE", default=None, help="")
 
     potential_group = ap.add_argument_group("Embedding Potential Calculations")
-    potential_group.add_argument("-p", dest="potential", default=None, metavar="POTENTIAL", help="Adds a 'constant' PE-potential to the calculation, for example a protein or solvent shell.")
     potential_group.add_argument("--potential-no-pol", dest="do_polarization", default=True, action="store_false", help="Set this flag to disable polarization effects. This will also remove screening in the couplings between chromophores.")
     potential_group.add_argument("--potential-isopol", dest="do_isopol", default=False, action="store_true", help="Set this flag to only do isotropic polarizabilities instead of the full anisotropic polarizabilities.")
     potential_group.add_argument("--potential-multipole-order", type=int, default=2, choices=[0,1,2], help="Highest order multipole moment of the static part of the embedding potential. Choices are: %(choices)s. Default is %(default)s.")
@@ -1251,6 +1271,7 @@ if __name__ == "__main__":
 
     chr_group = ap.add_argument_group("Excited State Chromophore Calculations")
     chr_group.add_argument("-c", type=str, nargs="+", metavar="NAME", help="Selects residue names to be excitonically coupled.")
+    potential_group.add_argument("-p", dest="potential", default=None, action=ExpandPath, metavar="POTENTIAL", help="Adds a 'constant' PE-potential to the calculation, for example a protein or solvent shell.")
     chr_group.add_argument('-r', metavar="DISTANCE", type=float, default=-1.0, help="Select additional fragments within DISTANCE of fragments from -c to be coupled excitonically. Mutually exclusive with -a.")
     chr_group.add_argument('-a', metavar="ID", nargs='+', type=int, help="Appends fragment indices to list of chromophores that are to be coupled excitonically. Mutually exclusive with -r.")
 
