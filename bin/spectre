@@ -1190,6 +1190,8 @@ def cleanup_work_directories(mols, args):
 if __name__ == "__main__":
 
     # attempt to guess scratch area before calculation even begins
+    # if we cannot guess a scratch area report it as an error so
+    # the calculation does not fail later
     slurm_scratch = os.environ.get('SCRATCH', None)
     spectre_scratch = os.environ.get('SPECTRE_TMPDIR', None)
 
@@ -1284,7 +1286,7 @@ if __name__ == "__main__":
     chr_group.add_argument("--ex-jobs-per-node", default=chr_jobs_per_node, type=int, metavar="JOBS_PER_NODE", help="Number of jobs to execute per node for embedded chromophores. This is number is usually lower than the potential counterpart. Default is %(default)s.")
     chr_group.add_argument("--ex-cpus-per-job", default=chr_cpus_per_job, type=int, metavar="CPUS_PER_JOB", help="Number of cores per job. This number should almost always be equal to the number of cores available on your node. Default is %(default)s.")
 
-    cpl_group = ap.add_argument_group("Coupling Parameters", description="""In case there are multiple chromophores selected through the -c keyword or other keywords, the chromophores will electronically couple through a term J = J^0 + J^1 where J^0 is computed always and J^1 depends on the environment. J^1 is always computed unless the environment is static.
+    cpl_group = ap.add_argument_group("Coupling Parameters", description="""In case there are multiple chromophores selected through the -c keyword or other keywords, the chromophores will electronically couple through a term J = J^0 + J^1 where J^0 is computed always and J^1 depends on the environment. J^1 is always computed unless the environment is static or the --potential-no-pol option has been given.
     """)
     cpl_group.add_argument("--coupling-trdip", dest="coupling_with_moments", default=True, action="store_false", help="Set this flag to use the transition dipole moments instead of a transition density fitted multipole expansion (see option --coupling-qfit-mom) to compute the coupling elements between the excited states of the chromophores.")
     cpl_group.add_argument("--coupling-qfit-mom", choices=[0], default=0, type=int, help="The order of the multipole moments (0 is charges, 1 is charges and dipoles and so on) used to compute the couplings. Choices are: %(choices)s. Default is %(default)s.")
@@ -1299,6 +1301,13 @@ if __name__ == "__main__":
     if args.c is None:
         print("No chromophores specified. Aborting.")
         exit()
+
+    if scratch_path is None:
+        print("ERROR: SPECTRE could not set temporary work directory.")
+        print("       Please use SCRATCH or SPECTRE_TMPDIR environment variables")
+        print("       or the --scratch option.")
+        exit()
+
 
     # what follows here is the proposed workflow along required packages
     #
