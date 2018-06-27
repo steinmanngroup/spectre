@@ -335,6 +335,7 @@ def build_molecule_from_fragment(obmol, atom_indices, name, charge, args):
     mol = Molecule()
     mol.setName(name)
     mol.setCharge(charge)
+
     for atom_index in atom_indices:
         obatom = obmol.GetAtom(atom_index)
         mol.addAtom(Atom(obatom.GetAtomicNum(),
@@ -504,6 +505,7 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
 
     return DALTONLoPropJob(name,
                            custom_run_script=args.potential_script,
+                           charge=molecule.getCharge(),
                            basis_set=args.potential_basis,
                            cores_per_job=args.potential_cpus_per_job,
                            scratch_directory=args.scratch_directory,
@@ -742,6 +744,7 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chroms, args):
 
         jobs.append(
            DALTONPEExEnergyJob(name,
+               charge=molecule.getCharge(),
                custom_run_script=args.ex_script,
                basis_set=args.ex_basis,
                cores_per_job=args.ex_cpus_per_job,
@@ -1302,7 +1305,7 @@ if __name__ == "__main__":
         print("No chromophores specified. Aborting.")
         exit()
 
-    if scratch_path is None:
+    if args.scratch_directory is None:
         print("ERROR: SPECTRE could not set temporary work directory.")
         print("       Please use SCRATCH or SPECTRE_TMPDIR environment variables")
         print("       or the --scratch option.")
