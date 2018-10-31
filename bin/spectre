@@ -1091,17 +1091,23 @@ def build_chromophore_potential(potentials, args, *chroms):
             continue
         idx_potentials.append(j)
 
-    # idx_potentials is a list of potentials we actually need
-    assert len(idx_potentials) != 0
-    idx = idx_potentials[0]
 
-    # external 'constant' potentials are added first
-    if args.potential is not None:
-        chromophore_potential = pepytools.Potential.from_file(args.potential) + potentials[idx]
+    # idx_potentials is a list of potentials we actually need
+    if len(idx_potentials) == 0:
+        if args.potential is not None:
+            chromophore_potential = pepytools.Potential.from_file(args.potential)
+        else:
+            raise ValueError("No external potentials. Are you sure this is what you want?")
     else:
-        chromophore_potential = potentials[idx]
-    for idx_potential in idx_potentials[1:]:
-        chromophore_potential = chromophore_potential + potentials[idx_potential]
+        idx = idx_potentials[0]
+
+        # external 'constant' potentials are added first
+        if args.potential is not None:
+            chromophore_potential = pepytools.Potential.from_file(args.potential) + potentials[idx]
+        else:
+            chromophore_potential = potentials[idx]
+        for idx_potential in idx_potentials[1:]:
+            chromophore_potential = chromophore_potential + potentials[idx_potential]
 
     return chromophore_potential
 
