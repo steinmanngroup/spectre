@@ -19,7 +19,7 @@ def setup_spectre():
 
     setup(name="spectre",
         version=version_str,
-        url = "https://github.com/cstein/spectre",
+        url = "https://github.com/steinmanngroup/spectre",
         author = "Casper Steinmann",
         author_email = "casper.steinmann@gmail.com",
         maintainer = "Casper Steinmann",

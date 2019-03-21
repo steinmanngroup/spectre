@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#
+from __future__ import print_function
 import argparse
 import errno
 import getpass
@@ -8,8 +8,6 @@ logging.basicConfig(level=logging.INFO) #WARNING
 import os
 import os.path
 import shutil
-import socket
-import subprocess
 import sys
 import zipfile
 
@@ -217,8 +215,8 @@ class SpectreExcitedStateData(object):
 class ExpandPath(argparse.Action):
     """ ArgumentParser custom action to expand absolute paths """
     def __call__(self, parser, namespace, values, option_string=None):
-        print "argparse.Action ExpandPath"
-        print values
+        print("argparse.Action ExpandPath")
+        print(values)
         if values is None:
             setattr(namespace, self.dest, None)
         else:
@@ -256,11 +254,11 @@ def setup_chromophores(args):
         lists of molecules, chromophore indices, potentials and a pcm surface
     """
     if args.verbose:
-        print header("GENERATING POTENTIALS", 0)
+        print(header("GENERATING POTENTIALS", 0))
 
     # first step is to fragment everything
     if args.verbose:
-        print ">>>> OUTPUT FROM FRAGIT <<<<"
+        print(">>>> OUTPUT FROM FRAGIT <<<<")
     molecule = OBMoleculeFromFilenameAndFormat(args.input)
     fragmentation = fragit.fragmentation.Fragmentation(molecule, conffile=args.frag_settings, verbose=False)
     fragmentation.setVerbose(args.verbose)
@@ -269,7 +267,7 @@ def setup_chromophores(args):
     fragmentation.finishFragmentation()
 
     if args.verbose:
-        print ">>>> END <<<<"
+        print(">>>> END <<<<")
         print
 
     # molecule representation of each fragment
@@ -358,11 +356,11 @@ def generate_potentials(molecules, args):
     """
 
     if args.verbose:
-        print "Settings:"
+        print("Settings:")
         functional = "RHF"
         if args.potential_functional is not None:
             functional = args.potential_functional
-        print "  theory           : {0}/{1}".format(functional, args.potential_basis)
+        print("  theory           : {0}/{1}".format(functional, args.potential_basis))
 
         stat_pot = "charges, dipoles and quadrupoles"
         dyna_pot = "electric dipole-dipole polarizabilities"
@@ -372,19 +370,19 @@ def generate_potentials(molecules, args):
         if not args.do_polarization:
             dyna_pot = "none"
 
-        print "  static potential : {}".format(stat_pot)
-        print "  dynamic potential: {}".format(dyna_pot)
-        print ""
+        print("  static potential : {}".format(stat_pot))
+        print("  dynamic potential: {}".format(dyna_pot))
+        print("")
         if args.potential_script is not None:
-            print "  custom script  : {}".format(args.potential_script)
-            print ""
+            print("  custom script  : {}".format(args.potential_script))
+            print("")
 
-        print "  jobs per node    : {0:d}".format(args.potential_jobs_per_node)
-        print "  cpus per job     : {0:d}".format(args.potential_cpus_per_job)
+        print("  jobs per node    : {0:d}".format(args.potential_jobs_per_node))
+        print("  cpus per job     : {0:d}".format(args.potential_cpus_per_job))
 
     # base working directory for job
     base = os.path.splitext(args.input)[0]
-    print "BASE: ", base
+    print("BASE: ", base)
     safe_create_dir(base)
     os.chdir(base)
 
@@ -474,7 +472,7 @@ def safe_create_dir(path):
     """
     try:
         os.makedirs(path)
-    except OSError, e:
+    except OSError as e:
         if e.errno != errno.EEXIST:
             raise
 
@@ -538,7 +536,7 @@ def build_hostlist(njpn, ncpj, args):
 
     if args.verbose:
         print(header("HOST LIST", 1))
-        print nodes, njpn, ncpj
+        print(nodes, njpn, ncpj)
 
     return nodes
 
@@ -664,29 +662,29 @@ def compute_chromophores(mols, pots, chroms, args):
     """
 
     if args.verbose:
-        print header("COMPUTING CHROMOPHORE EXCITED STATE PROPERTIES", 0)
+        print(header("COMPUTING CHROMOPHORE EXCITED STATE PROPERTIES", 0))
 
-        print "Settings:"
+        print("Settings:")
         functional = "RHF"
         if args.ex_functional is not None:
             functional = args.ex_functional
-        print "  theory              : {0}/{1}".format(functional, args.ex_basis)
-        print "  chromophore names   : {0}".format(", ".join(args.c))
-        print "  number of states    : {0}".format(args.ex_n)
+        print("  theory              : {0}/{1}".format(functional, args.ex_basis))
+        print("  chromophore names   : {0}".format(", ".join(args.c)))
+        print("  number of states    : {0}".format(args.ex_n))
         states = "all"
         if args.ex_state > 0:
             states = "{0}".format(args.ex_state)
-        print "  coupling states     : {0}".format(states)
-        print ""
+        print("  coupling states     : {0}".format(states))
+        print("")
         if args.potential_script is not None:
-            print "  custom script     : {}".format(args.ex_script)
-            print ""
+            print("  custom script     : {}".format(args.ex_script))
+            print("")
 
         if args.potential is not None:
-            print "  external potential: {}".format(args.potential)
+            print("  external potential: {}".format(args.potential))
 
-        print "  jobs per node    : {0:d}".format(args.ex_jobs_per_node)
-        print "  cpus per job     : {0:d}".format(args.ex_cpus_per_job)
+        print("  jobs per node    : {0:d}".format(args.ex_jobs_per_node))
+        print("  cpus per job     : {0:d}".format(args.ex_cpus_per_job))
 
     # generate calcit jobs for DALTON calculation
     jobs, job_names = build_calcit_dalton_ex_jobs(mols, pots, chroms, args)
@@ -1143,7 +1141,7 @@ def matstat(mat):
     i = numpy.argmax(numpy.abs(mat))
     (idx, jdx) = numpy.unravel_index(numpy.abs(mat).argmax(), mat.shape)
 
-    print "MAX Element {2:9.6f} between elements {0:d} and {1:d}".format(idx+1, jdx+1, numpy.ravel(mat)[i])
+    print("MAX Element {2:9.6f} between elements {0:d} and {1:d}".format(idx+1, jdx+1, numpy.ravel(mat)[i]))
 
 
 def write_dalton_ex_data(energies, osc_strs, idx=1):
@@ -1179,7 +1177,7 @@ def write_dalton_ex_data(energies, osc_strs, idx=1):
     s = "@  {7:1d}{0:>7d}{1:11.4f}{2:14.4f}{3:9.4f}{4:12.3f}{5:9.3f}{6:9.3f}"
 
     for i, (energy, osc_str) in enumerate(zip(energies, osc_strs)):
-        print s.format(i+1, energy, 0.0, osc_str, 0.0, 0.0, 0.0,idx)
+        print(s.format(i+1, energy, 0.0, osc_str, 0.0, 0.0, 0.0,idx))
 
 def cleanup_work_directories(mols, args):
     """ Compresses working folders to zip and removes them
@@ -1302,16 +1300,16 @@ if __name__ == "__main__":
 
     cpl_group.add_argument("--coupling-inddip-eps", default=1.0e-8, type=float, metavar="EPS", help="threshold for the convergence of the induced dipoles in the J1 term. Default is %(default)s.")
 
-    args = ap.parse_args()
-    print args
+    INPUT_ARGS = ap.parse_args()
+    print(INPUT_ARGS)
 
 
     # do some error handling
-    if args.c is None:
+    if INPUT_ARGS.c is None:
         print("No chromophores specified. Aborting.")
         exit()
 
-    if args.scratch_directory is None:
+    if INPUT_ARGS.scratch_directory is None:
         print("ERROR: SPECTRE could not set temporary work directory.")
         print("       Please use SCRATCH or SPECTRE_TMPDIR environment variables")
         print("       or the --scratch option.")
@@ -1338,18 +1336,18 @@ if __name__ == "__main__":
     # parameters for these molecules (specifically for J1)
     #
     # 2. Generate embedding potential for everything using FragIt and CalcIt
-    molecules, chromophores, potentials, pcm_surface = setup_chromophores(args)
+    molecules, chromophores, potentials, pcm_surface = setup_chromophores(INPUT_ARGS)
     #
     #
     # VIII. Computation of diagonal part of Foerster matrix along with
     # transition dipole moments (or transition density charges)
-    properties = compute_chromophores(molecules, potentials, chromophores, args)
+    properties = compute_chromophores(molecules, potentials, chromophores, INPUT_ARGS)
 
     for i, p in enumerate(properties, start=1):
         write_dalton_ex_data(p.getExcitationEnergies(), p.getOscillatorStrengths(), idx=i)
 
     if len(chromophores) > 1:
-        exciton_energies, exciton_tr_dips, excitation_osc_str = couple_chromophores(molecules, chromophores, potentials, properties, args)
+        exciton_energies, exciton_tr_dips, excitation_osc_str = couple_chromophores(molecules, chromophores, potentials, properties, INPUT_ARGS)
         write_dalton_ex_data(exciton_energies, excitation_osc_str)
 
-    cleanup_work_directories(molecules, args)
+    cleanup_work_directories(molecules, INPUT_ARGS)
