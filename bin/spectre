@@ -5,10 +5,12 @@ import errno
 import getpass
 import logging
 logging.basicConfig(level=logging.INFO) #WARNING
+import multiprocessing
 import os
 import os.path
 import shutil
 import sys
+import time
 import zipfile
 
 import numpy
@@ -63,6 +65,7 @@ SPECTRE uses a three-step procedure to compute the exciton state of a molecule:
    the coupled excited state spectrum of the chromophores.
 """
 
+
 class SpectreValueError(ValueError):
     pass
 
@@ -77,6 +80,7 @@ class SpectreExcitedStateValueError(SpectreValueError):
 
 class SpectreRuntimeError(RuntimeError):
     pass
+
 
 class DALTONLoPropJob(calcit.dalton.DALTONJob):
     """ A DALTON job to calculate LoProp properties
@@ -143,51 +147,56 @@ class DALTONPEExEnergyJob(calcit.dalton.DALTONJob):
 
 class SpectreExcitedStateData(object):
     """ Representation of excited state data in SPECTRE """
+
     def __init__(self):
-        self.excitation_energies = [] # excitation energies
+        self._excitation_energies = [] # excitation energies
         self._tr_dips = [] # transition dipoles
         self.tr_q = [] # transition density fitted charges
 
     @classmethod
-    def fromData(cls, de, tr_d, tr_q):
+    def from_data(cls, de, tr_d, tr_q):
         """ Initiates the SpectreExcitedStateData class from data
 
-            Arguments:
-            de -- excitation energies
-            tr_d -- transition dipoles
-            tr_q -- transition density fitted charges
+            :param de: excitation energies
+            :type de: list[float]
+            :param tr_d: transition dipoles
+            :type tr_d: list[list[float]]
+            :param tr_q: transition density fitted charges
+            :type tr_q: list[float]
+
+            :return: A populated SpectreExcitedStateData class
         """
         a = cls()
-        a.setExcitationEnergies(de)
-        a.setTransitionDipoles(tr_d)
-        a.setTransitionDensityFittedCharges(tr_q)
+        a.set_excitation_energies(de)
+        a.set_transition_dipoles(tr_d)
+        a.set_transition_density_fitted_charges(tr_q)
         return a
 
-    def getNExcitedStates(self):
-        return len(self.energies)
+    def get_number_of_excited_states(self):
+        return len(self._excitation_energies)
 
-    def getExcitationEnergies(self):
-        if len(self.excitation_energies) == 0:
+    def get_excitation_energies(self):
+        if len(self._excitation_energies) == 0:
             raise SpectreExcitedStateValueError("No excitation energies stored.")
 
-        return self.excitation_energies
+        return self._excitation_energies
 
-    def setExcitationEnergies(self, value):
-        self.excitation_energies = numpy.array(value)
+    def set_excitation_energies(self, value):
+        self._excitation_energies = numpy.array(value)
 
-    def getTransitionDipoles(self):
+    def get_transition_dipoles(self):
         return self._tr_dips
 
-    def setTransitionDipoles(self, value):
+    def set_transition_dipoles(self, value):
         self._tr_dips = numpy.array(value)
 
-    def getTransitionDensityFittedCharges(self):
+    def get_transition_density_fitted_charges(self):
         return self.tr_q
 
-    def setTransitionDensityFittedCharges(self, value):
+    def set_transition_density_fitted_charges(self, value):
         self.tr_q = numpy.array(value)
 
-    def getOscillatorStrengths(self):
+    def get_oscillator_strengths(self):
         """ Computes and returns the oscillator strengths of excitation
 
             The oscillator strenth is computed from 2/3 dE |mu|
@@ -199,7 +208,7 @@ class SpectreExcitedStateData(object):
             oscillator strengths for all excitations
         """
         osc = []
-        for e, d in zip(self.getExcitationEnergies(), self.getTransitionDipoles()):
+        for e, d in zip(self.get_excitation_energies(), self.get_transition_dipoles()):
             osc.append( 2.0/3.0 * e * d.dot(d))
 
         return numpy.array(osc)
@@ -207,7 +216,7 @@ class SpectreExcitedStateData(object):
     def __str__(self):
         line = "@  1{0:>7d}{1:11.4f}{2:14.4f}{3:9.4f}{4:12.3f}{5:9.3f}{6:9.3f}\n"
         s = ""
-        for i, (e, d) in enumerate(zip(self.excitation_energies, self.tr_dips), start=1):
+        for i, (e, d) in enumerate(zip(self._excitation_energies, self._tr_dips), start=1):
             s += line.format(i, e, 0.0, 2./3.*e*d.dot(d), 0.0, 0.0, 0.0)
         return s
 
@@ -238,6 +247,7 @@ def header(text, level, default_width=40):
 # ---------------------------------------------
 # ---------------------------------------------
 
+
 def setup_chromophores(args):
     """ Slim version of PEAS to generate potentials
 
@@ -259,7 +269,7 @@ def setup_chromophores(args):
     # first step is to fragment everything
     if args.verbose:
         print(">>>> OUTPUT FROM FRAGIT <<<<")
-    molecule = OBMoleculeFromFilenameAndFormat(args.input)
+    molecule = obmolecule_from_filename_and_format(args.input)
     fragmentation = fragit.fragmentation.Fragmentation(molecule, conffile=args.frag_settings, verbose=False)
     fragmentation.setVerbose(args.verbose)
     fragmentation.beginFragmentation()
@@ -268,7 +278,7 @@ def setup_chromophores(args):
 
     if args.verbose:
         print(">>>> END <<<<")
-        print
+        print()
 
     # molecule representation of each fragment
     molecules = list(generate_molecules(molecule, fragmentation, args))
@@ -285,7 +295,7 @@ def setup_chromophores(args):
     return molecules, chromophores, potentials, pcm_surface
 
 
-def OBMoleculeFromFilenameAndFormat(filename, file_format='pdb'):
+def obmolecule_from_filename_and_format(filename, file_format='pdb'):
     """ Loads a molecule into an OpenBabel molecule.
 
         Arguments:
@@ -382,7 +392,6 @@ def generate_potentials(molecules, args):
 
     # base working directory for job
     base = os.path.splitext(args.input)[0]
-    print("BASE: ", base)
     safe_create_dir(base)
     os.chdir(base)
 
@@ -560,7 +569,7 @@ def build_potential(mol, name):
     os.chdir(name)
 
     potential = potential_from_loprop_data(mol, name)
-    #if False:
+    # if False:
     #    with open("{0:s}.pot".format(name), 'w') as pot_file:
     #        pot_file.write(str(potential))
 
@@ -650,6 +659,7 @@ def potential_from_loprop_data(mol, name):
 # ---------------------------------------------
 # ---------------------------------------------
 
+
 def compute_chromophores(mols, pots, chroms, args):
     """ Computes excited state properties for the supplied
         list of chromophores
@@ -708,6 +718,16 @@ def compute_chromophores(mols, pots, chroms, args):
 
     data = compute_chromophore_properties(mols, chroms, job_names, args)
     assert(len(data) == len(chroms))
+
+    s_out = ""
+    for i, p in enumerate(data, start=1):
+        s_out += "{0:s}\n".format(output_dalton_ex_data(p.get_excitation_energies(), p.get_oscillator_strengths(), idx=i))
+    print(s_out)
+    if args.write_file:
+        base = os.path.splitext(args.input)[0]
+        filename = "{0}_uncoupled.dat".format(base)
+        with open(filename, "w") as f:
+            f.write(s_out)
 
     return data
 
@@ -795,7 +815,7 @@ def compute_chromophore_properties(mols, chroms, job_names, args):
             else:
                 print("The file '{0:s}.out' was not found. There could be a problem with the calculation so please check all output in the folder {1:s}.".format(jobname, name))
             exit()
-        data.append(SpectreExcitedStateData.fromData(energies, tr_dips, tr_charges))
+        data.append(SpectreExcitedStateData.from_data(energies, tr_dips, tr_charges))
         #assert(molecule.getNumAtoms() == len(tr_charges[0]), "Data read from '{}' does not match number of atoms.".format(jobname))
 
         #data[chrom] = {'energies': energies, 'tr_dips': tr_dips, 'tr_charges': tr_charges}
@@ -860,17 +880,21 @@ def get_chromophore_peex_data(filename, args):
 # ---------------------------------------------
 # ---------------------------------------------
 
+
 def couple_chromophores(molecules, chromophores, potentials, properties, args):
     """ Computes the exciton states for the chromophores.
 
-        Arguments:
-        molecules -- all molecules in the system
-        chromophores -- chromohores in the system
-        potentials -- all potentials for all molecules in the system
-        properties -- chromohore properties
+        :param molecules: all molecules in the system
+        :type molecules: list[Molecule]
+        :param chromophores: chromohores in the system
+        :type chromophores: list
+        :param potentials: all potentials for all molecules in the system
+        :type potentials: list
+        :param properties: chromophore properties
+        :type properties: list
 
-        Returns:
-        exciton energies, transition dipoles and oscillator strengths
+        :return: exciton energies, transition dipoles and oscillator strengths
+        :rtype: (list[float], list[list], list[float])
     """
 
     if args.verbose:
@@ -888,15 +912,19 @@ def couple_chromophores(molecules, chromophores, potentials, properties, args):
         couplings_str = "J0"
         if args.do_polarization:
             couplings_str = couplings_str + " + J1"
+
+        coupling_algorithm = "serial"
+        if args.coupling_cpus > 1:
+            coupling_algorithm = "parallel ({} cores)".format(args.coupling_cpus)
         print("  couplings       : {}".format(couplings_str))
         print("  calculated from : {}".format(coupling_mode))
+        print("  algorithm       : {}".format(coupling_algorithm))
 
         if args.do_polarization:
             print("  induced mom. eps: {0:6.1e}".format(args.coupling_inddip_eps))
 
-
-    energies = numpy.ravel([prop.getExcitationEnergies() for prop in properties])
-    tr_dips = [prop.getTransitionDipoles() for prop in properties]
+    energies = numpy.ravel([prop.get_excitation_energies() for prop in properties])
+    tr_dips = [prop.get_transition_dipoles() for prop in properties]
 
     # build coupling matrix
     J = compute_total_coupling(molecules, chromophores, potentials, properties, args)
@@ -924,7 +952,80 @@ def couple_chromophores(molecules, chromophores, potentials, properties, args):
         exciton_tr_dips.append(tr_dip)
         exciton_osc_str.append(2.0/3.0*ei*tr_dip.dot(tr_dip))
 
+    s_out = output_dalton_ex_data(exciton_energies, exciton_osc_str, idx=1)
+    print(s_out)
+    if args.write_file:
+        base = os.path.splitext(args.input)[0]
+        filename = "{0}_coupled.dat".format(base)
+        with open(filename, "w") as f:
+            f.write(s_out)
+
     return exciton_energies, numpy.asarray(exciton_tr_dips), numpy.asarray(exciton_osc_str)
+
+
+def compute_J0(mols, props, ichrom, jchrom, iex, jex, args):
+    """
+
+        Arguments:
+        mols -- molecules in the system
+    """
+    # extract the information we need
+
+    imol = mols[ichrom]
+    jmol = mols[jchrom]
+    coord_i = imol.getCoordinates() * aa2au
+    coord_j = jmol.getCoordinates() * aa2au
+
+    tr_q_i = props[ichrom].get_transition_density_fitted_charges()[iex]
+    tr_q_j = props[jchrom].get_transition_density_fitted_charges()[jex]
+
+    if args.coupling_with_moments:
+        if args.coupling_qfit_mom == 0:
+            return J0_tr_q_kernel(coord_i, coord_j, tr_q_i, tr_q_j)
+        else:
+            raise NotImplementedError("J0 Not implemented for moments higher than charges.")
+    else:
+        raise NotImplementedError("Transition dipole J0 couplings not implemented yet.")
+
+
+def compute_J1(mols, pots, props, ichrom, jchrom, iex, jex, args):
+    # 1) build potential without I and J in and make it
+    #     #    a transition potential (i.e. 0'es in static charge dist)
+    potij = build_chromophore_potential(pots, args, ichrom, jchrom)
+    potij.make_transition_potential()
+
+    imol = mols[ichrom]
+    jmol = mols[jchrom]
+    coord_i = imol.getCoordinates() * aa2au
+    coord_j = jmol.getCoordinates() * aa2au
+
+    tr_q_i = props[ichrom].get_transition_density_fitted_charges()[iex]
+    tr_q_j = props[jchrom].get_transition_density_fitted_charges()[jex]
+
+    # we need the potentials from the two chromophores which are dependent
+    # on how we used to compute J0
+    if args.coupling_with_moments:
+        if args.coupling_qfit_mom == 0:
+            poti = pepytools.Potential.from_multipoles(coord_i, tr_q_i)
+            potj = pepytools.Potential.from_multipoles(coord_j, tr_q_j)
+        else:
+            raise NotImplementedError("J1 Not implemented for moments higher than charges.")
+    else:
+        raise NotImplementedError("Transition dipole J1 couplings not implemented yet.")
+
+    # Solve for A.F(J) (eq 12 in 10.1021/acs.jctc.5b00470)
+    AF = potij + potj
+    polmat = pepytools.util.get_polarization_matrix(AF)
+    intmat = pepytools.util.get_interaction_matrix(AF)
+    field = pepytools.fields.get_static_field(AF)
+    s = pepytools.solvers.IterativeDIISSolver(polmat, intmat, field, verbose = False, threshold = args.coupling_inddip_eps)
+    muind = s.Solve()
+
+    # Now get field at induced dipoles to compute F(I).(A.F(J))
+    F = potij + poti
+    field = pepytools.fields.get_static_field(F)
+
+    return -field.dot(muind)
 
 
 def compute_total_coupling(mols, chroms, pots, props, args):
@@ -958,83 +1059,46 @@ def compute_total_coupling(mols, chroms, pots, props, args):
         props --
         args -- spectre options
     """
-    def compute_J0(mols, props, ichrom, jchrom, iex, jex, args):
-        """
-
-            Arguments:
-            mols -- molecules in the system
-        """
-        # extract the information we need
-
-        imol = mols[ichrom]
-        jmol = mols[jchrom]
-        coord_i = imol.getCoordinates() * aa2au
-        coord_j = jmol.getCoordinates() * aa2au
-
-        tr_q_i = props[ichrom].getTransitionDensityFittedCharges()[iex]
-        tr_q_j = props[jchrom].getTransitionDensityFittedCharges()[jex]
-
-        if args.coupling_with_moments:
-            if args.coupling_qfit_mom == 0:
-                return J0_tr_q_kernel(coord_i, coord_j, tr_q_i, tr_q_j)
-            else:
-                raise NotImplementedError("J0 Not implemented for moments higher than charges.")
-        else:
-            raise NotImplementedError("Transition dipole J0 couplings not implemented yet.")
-
-    def compute_J1(mols, pots, props, ichrom, jchrom, iex, jex, args):
-        # 1) build potential without I and J in and make it
-        #     #    a transition potential (i.e. 0'es in static charge dist)
-        potij = build_chromophore_potential(pots, args, ichrom, jchrom)
-        potij.make_transition_potential()
-
-        imol = mols[ichrom]
-        jmol = mols[jchrom]
-        coord_i = imol.getCoordinates() * aa2au
-        coord_j = jmol.getCoordinates() * aa2au
-
-        tr_q_i = props[ichrom].getTransitionDensityFittedCharges()[iex]
-        tr_q_j = props[jchrom].getTransitionDensityFittedCharges()[jex]
-
-        # we need the potentials from the two chromophores which are dependent
-        # on how we used to compute J0
-        if args.coupling_with_moments:
-            if args.coupling_qfit_mom == 0:
-                poti = pepytools.Potential.from_multipoles(coord_i, tr_q_i)
-                potj = pepytools.Potential.from_multipoles(coord_j, tr_q_j)
-            else:
-                raise NotImplementedError("J1 Not implemented for moments higher than charges.")
-        else:
-            raise NotImplementedError("Transition dipole J1 couplings not implemented yet.")
-
-
-        # Solve for A.F(J) (eq 12 in 10.1021/acs.jctc.5b00470)
-        AF = potij + potj
-        polmat = pepytools.util.get_polarization_matrix(AF)
-        intmat = pepytools.util.get_interaction_matrix(AF)
-        field = pepytools.fields.get_static_field(AF)
-        s = pepytools.solvers.IterativeDIISSolver(polmat, intmat, field, verbose = False, threshold = args.coupling_inddip_eps)
-        muind = s.Solve()
-
-        # Now get field at induced dipoles to compute F(I).(A.F(J))
-        F = potij + poti
-        field = pepytools.fields.get_static_field(F)
-
-        return -field.dot(muind)
-
-
-
     n = len(chroms) * args.ex_n
+
     J0 = numpy.zeros((n,n))
     J1 = numpy.zeros_like(J0)
 
-    for (chromophore_i, chromophore_j, iex, jex, imat, jmat) in chromophore_pair_ex_iterator(chroms, args):
-        J0[imat, jmat] = compute_J0(mols, props, chromophore_i, chromophore_j, iex, jex, args)
-        J0[jmat, imat] = J0[imat, jmat]
+    t0 = numpy.asarray(time.time(), dtype=numpy.float64)
+    if args.coupling_cpus > 1:
+        # parallel version (should be able to run in serial as well)
+        indices = []
+        j0_jobs = []
+        j1_jobs = []
+        pool = multiprocessing.Pool(processes=args.coupling_cpus)
+        for (chromophore_i, chromophore_j, iex, jex, imat, jmat) in chromophore_pair_ex_iterator(chroms, args):
+            indices.append((imat, jmat))
+            j0_jobs.append(pool.apply(compute_J0, args=(mols, props, chromophore_i, chromophore_j, iex, jex, args)))
+            if args.do_polarization:
+                j1_jobs.append(pool.apply(compute_J1, args=(mols, pots, props, chromophore_i, chromophore_j, iex, jex, args,)))
+
+        for i, (imat, jmat) in enumerate(indices):
+            J0[imat, jmat] = j0_jobs[i]
+            J0[jmat, imat] = J0[imat, jmat]
 
         if args.do_polarization:
-            J1[imat, jmat] = compute_J1(mols, pots, props, chromophore_i, chromophore_j, iex, jex, args)
-            J1[jmat, imat] = J1[imat, jmat]
+            for i, (imat, jmat) in enumerate(indices):
+                J1[imat, jmat] = j1_jobs[i]
+                J1[jmat, imat] = J1[imat, jmat]
+    else:
+        # serial execution
+        for (chromophore_i, chromophore_j, iex, jex, imat, jmat) in chromophore_pair_ex_iterator(chroms, args):
+
+            J0[imat, jmat] = compute_J0(mols, props, chromophore_i, chromophore_j, iex, jex, args)
+            J0[jmat, imat] = J0[imat, jmat]
+
+            if args.do_polarization:
+                J1[imat, jmat] = compute_J1(mols, pots, props, chromophore_i, chromophore_j, iex, jex, args)
+                J1[jmat, imat] = J1[imat, jmat]
+
+    t1 = numpy.asarray(time.time(), dtype=numpy.float64)
+    if args.verbose:
+        print("total coupling time [s]: {0:6.2f}".format(t1 - t0))
 
     return J0 + J1
 
@@ -1144,8 +1208,8 @@ def matstat(mat):
     print("MAX Element {2:9.6f} between elements {0:d} and {1:d}".format(idx+1, jdx+1, numpy.ravel(mat)[i]))
 
 
-def write_dalton_ex_data(energies, osc_strs, idx=1):
-    """ Writes a DALTON style file based on relevant data
+def output_dalton_ex_data(energies, oscillator_strengths, idx=1):
+    """ Writes a DALTON-like output of spectral properties
 
         Note: Rotational strengths are not supplied as of now
               but is on the TODO.
@@ -1169,15 +1233,15 @@ def write_dalton_ex_data(energies, osc_strs, idx=1):
         @  1      4     5.1764        0.0000   0.0012       0.000   -1.910   -1.888
         @  1      5     5.5422        0.0000   0.0019       0.000   -5.130   -5.386
         @  1      6     5.9525        0.0000   0.0149       0.000   -2.226   -2.913
-
-
-
-
     """
-    s = "@  {7:1d}{0:>7d}{1:11.4f}{2:14.4f}{3:9.4f}{4:12.3f}{5:9.3f}{6:9.3f}"
+    s = "@  {0:1d}{1:>7d}{2:11.4f}{3:14.4f}{4:9.4f}{5:12.3f}{6:9.3f}{7:9.3f}\n"
 
-    for i, (energy, osc_str) in enumerate(zip(energies, osc_strs)):
-        print(s.format(i+1, energy, 0.0, osc_str, 0.0, 0.0, 0.0,idx))
+    s_out = ""
+    for i, (energy, osc_str) in enumerate(zip(energies, oscillator_strengths)):
+        s_out += s.format(idx, i+1, energy, 0.0, osc_str, 0.0, 0.0, 0.0)
+
+    return s_out[:-1]
+
 
 def cleanup_work_directories(mols, args):
     """ Compresses working folders to zip and removes them
@@ -1207,7 +1271,7 @@ if __name__ == "__main__":
     if slurm_scratch is not None:
         scratch_path = scratch_path_str.format(slurm_scratch, getpass.getuser())
     elif spectre_scratch is not None:
-        scratch_path = scratch_path_str.format(spectra_scratch, getpass.getuser())
+        scratch_path = scratch_path_str.format(spectre_scratch, getpass.getuser())
 
     # check environment variables before computation starts
     # we will report on _ALL_ environment variables before
@@ -1249,12 +1313,16 @@ if __name__ == "__main__":
     pot_jobs_per_node = os.environ.get("SLURM_NTASKS_PER_NODE", 1)
     pot_cpus_per_job = os.environ.get("SLURM_CPUS_PER_TASK", 1)
 
-    # for chromophores we always default to 1 and 1 but the README should
+    # for chromophore excitations we always default to 1 and 1 but the README should
     # specify that this is usually not wanted.
     # NB: Please note that using this setup it is not possible to run a single
     #     DALTON calculation on more than one node.
     chr_jobs_per_node = 1
     chr_cpus_per_job = 1
+
+    # for coupling calculations we default to the serial unless
+    # slurm tells us the number of cores on each node
+    coup_cpus = os.environ.get("SLURM_JOB_CPUS_PER_NODE", 1)
 
 
     ap = argparse.ArgumentParser(description=__doc__)
@@ -1263,6 +1331,7 @@ if __name__ == "__main__":
     ap.add_argument("-v", "--verbose", action="store_true", default=False)
     ap.add_argument("-s", "--scratch", dest="scratch_directory", metavar="DIRECTORY", default=scratch_path, help="Base directory for scratch storage. Default is extracted from either SCRATCH or SPECTRE_TMPDIR environment variables. Default %(default)s.")
     ap.add_argument("--dryrun", dest="is_dryrun", action="store_true", default=False, help="Specify this flag to skip any computations in either embedding potential calculations or excited state calculations. If the excited state calculations are present SPECTRE will compute the coupled spectrum.")
+    ap.add_argument("-w", dest="write_file", action="store_true", default=False, help="Write resulting spectra to files using input file as base name.")
 
     fragmentation_group = ap.add_argument_group("Fragmentation")
     fragmentation_group.add_argument("-f", type=str, dest='frag_settings', metavar="FILE", default=None, help="")
@@ -1276,7 +1345,6 @@ if __name__ == "__main__":
     potential_group.add_argument("--potential-script", default=os.environ['SPECTRE'] +'/share/dalton_loprop.bash', metavar="SCRIPT", action=ExpandPath, help="Script to the LoProp potential for each chromophore. Default: %(default)s.")
     potential_group.add_argument("--potential-jobs-per-node", default=pot_jobs_per_node, type=int, metavar="JOBS_PER_NODE", help="Number of jobs to execute per node for potential calculation. This is number is usually equal to the number of cores available to you on a single node. Can be controlled with SLURM using the --ntasks-per-node option. Default is %(default)s.")
     potential_group.add_argument("--potential-cpus-per-job", default=pot_cpus_per_job, type=int, metavar="CPUS_PER_JOB", help="Number of cores per job. This number is usually low. Can be controlled with SLURM using the --cpus-per-task option. Default is %(default)s.")
-
 
     chr_group = ap.add_argument_group("Excited State Chromophore Calculations")
     chr_group.add_argument("-c", type=str, nargs="+", metavar="NAME", help="Selects residue names to be excitonically coupled.")
@@ -1299,10 +1367,10 @@ if __name__ == "__main__":
     cpl_group.add_argument("--coupling-qfit-mom", choices=[0], default=0, type=int, help="The order of the multipole moments (0 is charges, 1 is charges and dipoles and so on) used to compute the couplings. Choices are: %(choices)s. Default is %(default)s.")
 
     cpl_group.add_argument("--coupling-inddip-eps", default=1.0e-8, type=float, metavar="EPS", help="threshold for the convergence of the induced dipoles in the J1 term. Default is %(default)s.")
+    cpl_group.add_argument("--coupling-cpus", default=coup_cpus, type=int, metavar="CPUS_PER_NODE", help="Number of cores to use for computing the Foerster coupling matrix.")
 
     INPUT_ARGS = ap.parse_args()
     print(INPUT_ARGS)
-
 
     # do some error handling
     if INPUT_ARGS.c is None:
@@ -1314,7 +1382,6 @@ if __name__ == "__main__":
         print("       Please use SCRATCH or SPECTRE_TMPDIR environment variables")
         print("       or the --scratch option.")
         exit()
-
 
     # what follows here is the proposed workflow along required packages
     #
@@ -1343,11 +1410,7 @@ if __name__ == "__main__":
     # transition dipole moments (or transition density charges)
     properties = compute_chromophores(molecules, potentials, chromophores, INPUT_ARGS)
 
-    for i, p in enumerate(properties, start=1):
-        write_dalton_ex_data(p.getExcitationEnergies(), p.getOscillatorStrengths(), idx=i)
-
     if len(chromophores) > 1:
         exciton_energies, exciton_tr_dips, excitation_osc_str = couple_chromophores(molecules, chromophores, potentials, properties, INPUT_ARGS)
-        write_dalton_ex_data(exciton_energies, excitation_osc_str)
 
     cleanup_work_directories(molecules, INPUT_ARGS)
