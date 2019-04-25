@@ -16,7 +16,26 @@
 export PATH=$PATH
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH
 
-if [ ! -e $WORK_DIR/$JOB.loprop ]
+# compute the nescessary integrals through DALTON before we move on
+export DALTON_TMPDIR=$SCRATCH
+export DALTON_NUM_MPI_PROCS=$NCPUS
+export OMP_NUM_THREADS=1
+
+# in SLURM we prefer to use srun
+#if [ -z ${SLURM_JOB_NAME+x} ]
+#then
+#    export DALTON_LAUNCHER="srun"
+#fi
+
+# run the calculation
+
+# the .pot file contains coordinates of ALL
+# polarizable sites
+$PROGPATH/dalton -mb $MEMORY -d -noarch -nobackup -noappend -get '$JOB.h5' -put '$JOB.h5' -o $JOB.out -dal $JOB.dal -pot temp.pot > $JOB.dalout
+
+exit 1
+
+if [ ! -e $WORK_DIR/$JOB.h5 ]
 then
     # if the .loprop log file does not exist we first check to see if
     # the
@@ -63,7 +82,7 @@ then
         if [ -e AOONEINT -a -e DALTON.BAS -a -e SIRIFC -a -e AOPROPER -a -e RSPVEC ]
         then
             export PYTHONPATH=$LOPROP/lib/python2.7/site-packages:$PYTHONPATH
-            $LOPROP/bin/loprop -a $POLMOM -l $MULMOM -t . --decimal 9 > $JOB.loprop
+            $LOPROP/bin/loprop.py -a $POLMOM -l $MULMOM -t . --decimal 9 > $JOB.loprop
 
             rm -f RSPVEC AOPROPER SIRIFC DALTON.BAS AOONEINT
 

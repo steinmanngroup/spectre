@@ -35,7 +35,9 @@ def setup_spectre():
         data_files=[
             ('', ['README.md','LICENSE']),
             ('share', [
-                'share/dalton_loprop.bash', 'share/dalton_excited.bash'
+                'share/dalton_loprop.bash',
+                'share/dalton_pde.bash',
+                'share/dalton_excited.bash'
             ])
         ]
   )

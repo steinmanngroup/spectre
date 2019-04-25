@@ -20,13 +20,13 @@ then
     export DALTON_NUM_MPI_PROCS=$NCPUS
     export OMP_NUM_THREADS=1
     # in SLURM we prefer to use srun
-    if [ -z ${SLURM_JOB_NAME+x} ]
-    then
-        export DALTON_LAUNCHER="srun"
-    fi
+    #if [ -z ${SLURM_JOB_NAME+x} ]
+    #then
+    #    export DALTON_LAUNCHER="srun"
+    #fi
     
     # run the calculation
-    $PROGPATH/dalton -mb $MEMORY -d -noappend -noarch -ow -dal $JOB.dal -pot $JOB.pot > $JOB.dalout
+    $PROGPATH/dalton -mb $MEMORY -d -noappend -noarch -o $JOB.out -dal $JOB.dal -pot $JOB.pot > $JOB.dalout
 
 else
     echo "Skipping $JOB because output exists."

@@ -131,6 +131,9 @@ class Molecule(object):
 
         return c
 
+    def getLabels(self):
+        return [_atom.getLabel() for _atom in self.getAtoms()]
+
     def setCoordinates(self, c):
         """ Sets the coordinates of all atoms in the molecule from
             the numpy array
@@ -151,6 +154,6 @@ class Molecule(object):
             mass += atom_mass
             Rcm += atom.getCoordinate() * atom_mass
 
-        assert(mass != 0.0, "Total mass of molecule cannot be zero.")
+        assert mass != 0.0, "Total mass of molecule cannot be zero."
 
         return Rcm / mass
