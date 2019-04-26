@@ -514,10 +514,7 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
         DALTON LoProp Job
     """
 
-    s = "{0:d}\n{1:s}\n".format(molecule.getNumAtoms(), molecule.getName())
-    s += XYZFormatter.coordinates(list(molecule.getAtoms()))
-    with open("{0:s}.xyz".format(name), 'w') as xyz_file:
-        xyz_file.write(s)
+    write_molecule_to_xyz(molecule, name)
 
     # compute the different kinds of polarizablities
     pol_order = 2
@@ -535,6 +532,20 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
                            dft_functional=args.potential_functional,
                            multipole_order=args.potential_multipole_order,
                            polarizability_order=pol_order)
+
+
+def write_molecule_to_xyz(molecule, name):
+    """ Writes a molecule to .xyz file
+
+        :param molecule: the molecule to write to xyz file
+        :param name: the name of the molecule (will also be the filename)
+        :type molecule: Molecule
+        :type name: str
+    """
+    s = "{0:d}\n{1:s}\n".format(molecule.getNumAtoms(), molecule.getName())
+    s += XYZFormatter.coordinates(list(molecule.getAtoms()))
+    with open("{0:s}.xyz".format(name), 'w') as xyz_file:
+        xyz_file.write(s)
 
 
 def generate_pde_potentials(molecules, chroms, pots, args):
@@ -580,8 +591,8 @@ def generate_pde_potentials(molecules, chroms, pots, args):
     # should already be in the base directory.
     #base = os.path.splitext(args.input)[0]
 
-    #print("BUILD PDE")
-    #print(" dir:", os.getcwd())
+    print("BUILD PDE")
+    print(" dir:", os.getcwd())
 
     #safe_create_dir(base)
     #os.chdir(base)
@@ -609,6 +620,7 @@ def generate_pde_potentials(molecules, chroms, pots, args):
     #potentials = [build_loprop_potential(molecule, name) for molecule, name in zip(molecules, job_names)]
 
     print("PDE CALCULATION DONE")
+    exit()
     return job_names
 
 
@@ -636,7 +648,7 @@ def build_calcit_dalton_pde_jobs(molecules, chroms, pots, args):
     #if args.potential is not None:
     #    coord_pot += pepytools.Potential.from_file(args.potential)
 
-    # make potential for everything.
+    # make potential for everything. Needed to store static part of potential
     all_pot = pots[0]
     for p in pots[1:]:
         all_pot += p
@@ -650,29 +662,36 @@ def build_calcit_dalton_pde_jobs(molecules, chroms, pots, args):
 
     for i, ii in enumerate(chroms, start=1):
         mi = molecules[ii]
-        pi = pots[ii]
+        #pi = pots[ii]
 
-        name = "{0:04d}_{1:s}".format(i, mi.getName())
+        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.getName())
 
         # unpack a potential zipfile with properties of a single
         # molecule: potential and possible excitation calculations.
-        if zipfile.is_zipfile(name + ".zip"):
-            with zipfile.ZipFile(name + ".zip") as zf:
-                zf.extractall()
 
-        print("chromophore {0:s}:".format(name))
-        print("   dir:", os.getcwd())
-        os.chdir(name)
+        #print("")
+        #print("chromophore {0:s}:".format(name))
 
         for j, (mj, pj) in enumerate(zip(molecules, pots), start=1):
             if i == j:
                 continue
 
-            # building chromophore ii with all remaining pj potentials.
-            #print(i, ii, j)
-            h5_name = "{0:s}_{1:04d}_{2:s}".format(name, j, mj.getName())
+            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.getName())
 
-            with h5py.File("{0:s}.h5".format(h5_name), 'w') as h5:
+            if zipfile.is_zipfile(name + ".zip"):
+                with zipfile.ZipFile(name + ".zip") as zf:
+                    zf.extractall()
+
+            safe_create_dir(name)
+            os.chdir(name)
+
+            # building chromophore ii with all remaining pj potentials.
+            # print(i, ii, j)
+            print("   dir:", os.getcwd())
+
+            all_pot.save('temp.pot')
+
+            with h5py.File("{0:s}_dalton_pde_monomer.h5".format(name), 'w') as h5:
                 # store core (chromophore) properties
                 try:
                     core = h5.create_group("core_fragment")
@@ -693,56 +712,23 @@ def build_calcit_dalton_pde_jobs(molecules, chroms, pots, args):
                     fragment['charges'] = list([a.getNuclearCharge() for a in mj.getAtoms()])
                     fragment['coordinates'] = mj.getCoordinates()
 
-            print("  ", h5_name)
+            # also dump .xyz file with combined molecule
+            mol_combined = Molecule.fromMolecule(mi)
+            mol_combined.addAtoms(*list(mj.getAtoms()))
+            write_molecule_to_xyz(mol_combined, name)
 
-            jobs.append(build_calcit_dalton_pde_job(mj, h5_name, args))
-            job_names.append(h5_name)
+            print("  ", name)
 
-
-
-
-
-            if j > 5:
-                break
-
-        os.chdir("..")
-        exit()
+            jobs.append(build_calcit_dalton_pde_job(mj, name, args))
+            job_names.append(name)
 
 
-    print("LOL")
+            os.chdir("..")
+        # exit()
+
     print(chroms)
     print(molecules)
-    exit()
-
-
-    for i, molecule in enumerate(molecules, start=1):
-        name = "{0:04d}_{1:s}".format(i, molecule.getName())
-
-        # unpack a potential zipfile with properties of a single
-        # molecule: potential and possible excitation calculations.
-        if zipfile.is_zipfile(name + ".zip"):
-            with zipfile.ZipFile(name + ".zip") as zf:
-                zf.extractall()
-
-        # building a potential is free provided the necessary files are there
-        # so we will check for any exceptions raised during attempting to
-        # build a potential (but wait for later to actually build it)
-        try:
-            build_pde_potential(molecule, name)
-        except (OSError, IOError) as e:
-            if type(e) is OSError:  # directory is not created
-                safe_create_dir(name)
-
-            if type(e) is IOError:  # log-file is not found but we managed to change dir
-                os.chdir('..')
-
-            os.chdir(name)
-            jobs.append(build_calcit_dalton_pde_job(molecule, name, args))
-            coord_pot.save('temp.pot')
-            os.chdir("..")
-        finally:
-            # we always add the job name because we need it for later
-            job_names.append(name)
+    print(job_names)
 
     return jobs, job_names
 
@@ -757,7 +743,6 @@ def potential_from_molecule(m):
 
 def build_calcit_dalton_pde_job(molecule, name, args):
     # also write the h5 file
-
 
     return DALTONPDEJob(name,
                         custom_run_script=args.potential_pde_script,
