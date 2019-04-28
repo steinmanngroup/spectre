@@ -36,7 +36,7 @@ def setup_spectre():
             ('', ['README.md','LICENSE']),
             ('share', [
                 'share/dalton_loprop.bash',
-                'share/dalton_pde.bash',
+                'share/dalton_pde_monomer.bash', 'share/dalton_pde_dimer.bash',
                 'share/dalton_excited.bash'
             ])
         ]

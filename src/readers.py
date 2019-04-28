@@ -51,7 +51,7 @@ def get_chromophore_peex_data(filename, coupling_with_moments):
 
                 # check this line has the correct information
                 if not "Charges" in line:
-                    print(line)
+                    #print(line)
                     raise ValueError("Format of DALTON log file wrong. Expected 'Charges:' but got '{0:s}'".format(line))
                 else:
                     line = peex_file.readline()
@@ -63,7 +63,7 @@ def get_chromophore_peex_data(filename, coupling_with_moments):
                     charges.append(float(tokens[2]))
                     line = peex_file.readline()
 
-                print(charges)
+                #print(charges)
 
                 tr_charges.append(charges)
 
