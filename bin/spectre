@@ -4,7 +4,7 @@ import argparse
 import errno
 import getpass
 import logging
-logging.basicConfig(level=logging.WARNING) #WARNING
+logging.basicConfig(level=logging.INFO) #WARNING
 import multiprocessing
 import os
 import os.path
@@ -113,12 +113,10 @@ class DALTONLoPropJob(calcit.dalton.DALTONJob):
         return "DALTONLoPropJob('{0:s}')".format(self.basename)
 
 
-class DALTONPDEMonomerJob(calcit.dalton.DALTONJob):
+class DALTONPDEJob(calcit.dalton.DALTONJob):
     """ A DALTON job to calculate PDE properties """
     def __init__(self, basename, **kwargs):
         calcit.dalton.DALTONJob.__init__(self, basename, **kwargs)
-        self.runtype = 'pde_monomer'
-
 
     def _program_substitutions(self):
         """ Substitutes information relevant
@@ -130,33 +128,30 @@ class DALTONPDEMonomerJob(calcit.dalton.DALTONJob):
         self._run_script_substitutions['PROGPATH'] = os.environ.get('DALTON')
 
 
+class DALTONPDEMonomerJob(DALTONPDEJob):
+    """ A DALTON job to calculate PDE properties """
+    def __init__(self, basename, **kwargs):
+        DALTONPDEJob.__init__(self, basename, **kwargs)
+        self.runtype = 'pde_monomer'
+
+
     def __str__(self):
-        return "DALTON PDE ({0:s})".format(self.basename)
+        return "DALTON PDE Monomer ({0:s})".format(self.basename)
 
 
     def __repr__(self):
         return "DALTONPDEMonomerJob('{0:s}')".format(self.basename)
 
 
-class DALTONPDEDimerJob(calcit.dalton.DALTONJob):
+class DALTONPDEDimerJob(DALTONPDEJob):
     """ A DALTON job to calculate PDE properties """
     def __init__(self, basename, **kwargs):
-        calcit.dalton.DALTONJob.__init__(self, basename, **kwargs)
+        DALTONPDEJob.__init__(self, basename, **kwargs)
         self.runtype = 'pde_dimer'
 
 
-    def _program_substitutions(self):
-        """ Substitutes information relevant
-            Obtaining the LoProp parameters requires the program to
-            know where DALTON is and where LoProp Is.
-        """
-        self._run_script_substitutions['PATH'] = os.environ.get('PATH')
-        self._run_script_substitutions['LD_LIBRARY_PATH'] = os.environ.get('LD_LIBRARY_PATH')
-        self._run_script_substitutions['PROGPATH'] = os.environ.get('DALTON')
-
-
     def __str__(self):
-        return "DALTON PDE ({0:s})".format(self.basename)
+        return "DALTON PDE Dimer ({0:s})".format(self.basename)
 
 
     def __repr__(self):
@@ -266,27 +261,26 @@ class SpectreExcitedStateData(object):
 
 
 class ExpandPath(argparse.Action):
-    """ ArgumentParser custom action to expand absolute paths """
+    """ Custom ArgumentParser action to expand absolute paths """
     def __call__(self, parser, namespace, values, option_string=None):
-        # print("argparse.Action ExpandPath")
-        # print(values)
         if values is None:
             setattr(namespace, self.dest, None)
         else:
             setattr(namespace, self.dest, os.path.abspath(values))
 
 
-def header(text, level, default_width=40):
+def header(text, level, default_width=50):
     """ utility function to generate header strings """
     min_width = len(text) * 2
     width = max(default_width, min_width)
     if level == 0:
         outer_bar = "+{0:s}+".format("".join((width-2)*["-"]))
         inner_bar = "|{0:s}|".format("".join((width - 2) * ["-"]))
-        fmts = "{0:s}\n{1:s}\n{2:^" + "{0:d}".format(width) + "}\n{1:s}\n{0:s}"
+        fmts = "{0:s}\n{1:s}\n|{2:^" + "{0:d}".format(width-2) + "}|\n{1:s}\n{0:s}"
         return fmts.format(outer_bar, inner_bar, text)
 
     if level == 1:
+        width = min(default_width, min_width)
         bar = "".join(width*["-"])
         fmts = "{0:s}\n{1:^" + "{0:d}".format(width) + "}\n{0:s}"
         return fmts.format(bar, text)
@@ -617,7 +611,6 @@ def generate_pde_potentials(molecules, chroms, pots, args):
         print_option("jobs per node", args.potential_jobs_per_node, "{0:d}")
         print_option("cpus per job", args.potential_cpus_per_job, "{0:d}")
 
-    print(header("MONOMERS", 1))
     # generate calcit jobs for DALTON PDE Monomer calculations
     jobs, job_names = build_calcit_dalton_pde_monomer_jobs(molecules, chroms, pots, args)
 
@@ -636,7 +629,6 @@ def generate_pde_potentials(molecules, chroms, pots, args):
                         work_dir, remote_shell,
                         calcit_paths, do_execute)
 
-    print(header("DIMERS", 1))
     # generate calcit jobs for DALTON PDE Dimer calculations
     jobs, job_names = build_calcit_dalton_pde_dimer_jobs(molecules, chroms, pots, args)
 
@@ -644,8 +636,6 @@ def generate_pde_potentials(molecules, chroms, pots, args):
                         jobs, nodes, jobs_per_node,
                         work_dir, remote_shell,
                         calcit_paths, do_execute)
-
-    print("PDE CALCULATIONS DONE")
 
     return job_names
 
@@ -1496,7 +1486,7 @@ def output_dalton_ex_data(energies, oscillator_strengths, idx=1):
     return s_out[:-1]
 
 
-def cleanup_work_directories(mols, args):
+def cleanup_work_directories(mols):
     """ Compresses working folders to zip and removes them
 
         Scope: work_dir
@@ -1505,7 +1495,7 @@ def cleanup_work_directories(mols, args):
         mols -- molecules
         args -- spectre options
     """
-    for i, molecule in enumerate(molecules, start=1):
+    for i, molecule in enumerate(mols, start=1):
         name = "{0:04d}_{1:s}".format(i, molecule.getName())
         shutil.make_archive(name, 'zip', '.', name)
         shutil.rmtree(name)
@@ -1666,8 +1656,6 @@ if __name__ == "__main__":
     if INPUT_ARGS.do_pde:
         generate_pde_potentials(molecules, chromophores, potentials, INPUT_ARGS)
 
-
-
     #
     #
     # VIII. Computation of diagonal part of Foerster matrix along with
@@ -1677,4 +1665,4 @@ if __name__ == "__main__":
     if len(chromophores) > 1:
         exciton_energies, exciton_tr_dips, excitation_osc_str = couple_chromophores(molecules, chromophores, potentials, properties, INPUT_ARGS)
 
-    cleanup_work_directories(molecules, INPUT_ARGS)
+    cleanup_work_directories(molecules)
