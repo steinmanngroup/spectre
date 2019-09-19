@@ -1,7 +1,6 @@
 import copy
 import numpy
 
-import atom
 import bond
 import angle
 
