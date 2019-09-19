@@ -38,7 +38,7 @@ then
         echo "The old .h5 file '${OLD_FILE}' was not found."
         exit 1
     else
-        cp $WORK_DIR/${OLD_FILE} $WORK_DIR/$JOB.h5
+        cp $WORK_DIR/${OLD_FILE} $WORK_DIR/${NEW_FILE}
     fi
 fi
 
@@ -47,12 +47,13 @@ then
     if [ ! -e $WORK_DIR/$JOB.out ]
     then
         # but only if there is no output file
-        $PROGPATH/dalton -mb $MEMORY -d -noarch -nobackup -noappend -get '$JOB.h5' -put '$JOB.h5' -o $JOB.out -dal $JOB.dal -pot temp.pot > $JOB.dalout
-        if [ -e ${JOB}__temp.$JOB.h5 ]
+        $PROGPATH/dalton -mb $MEMORY -d -noarch -nobackup -noappend -get '$JOB.h5' -put '$JOB.h5' -o $JOB.out -dal $JOB.dal > $JOB.dalout
+        #$PROGPATH/dalton -mb $MEMORY -d -noarch -nobackup -noappend -get '$JOB.h5' -put '$JOB.h5' -o $JOB.out -dal $JOB.dal -pot temp.pot > $JOB.dalout
+        if [ -e ${JOB}.$JOB.h5 ]
         then
-            mv ${JOB}__temp.$JOB.h5 $JOB.h5
+            mv ${JOB}.$JOB.h5 $JOB.h5
         else
-            echo "Output from PDE monomer calculation $JOB is missing."
+            echo "Output from PDE dimer calculation $JOB is missing."
         fi
     else
         echo "Skipping $JOB because output exists."

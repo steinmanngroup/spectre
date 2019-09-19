@@ -8,6 +8,7 @@
 #  JOB     : $JOB
 #  MEMORY  : $MEMORY
 #  NCPUS   : $NCPUS
+#  PDEOPT  : $PDEOPT
 #
 
 export PATH=$PATH
@@ -26,7 +27,7 @@ then
     #fi
     
     # run the calculation
-    $PROGPATH/dalton -mb $MEMORY -d -noappend -noarch -o $JOB.out -dal $JOB.dal -pot $JOB.pot > $JOB.dalout
+    $PROGPATH/dalton -mb $MEMORY $PDEOPT -d -noappend -noarch -o $JOB.out -dal $JOB.dal -pot $JOB.pot > $JOB.dalout
 
 else
     echo "Skipping $JOB because output exists."
