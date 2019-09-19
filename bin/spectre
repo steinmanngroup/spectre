@@ -4,7 +4,7 @@ import argparse
 import errno
 import getpass
 import logging
-logging.basicConfig(level=logging.INFO) #WARNING
+# from typing import List, Any
 import multiprocessing
 import os
 import os.path
@@ -15,6 +15,8 @@ import zipfile
 
 import numpy
 numpy.set_printoptions(precision=2, linewidth=100)
+
+logging.basicConfig(level=logging.INFO)  # WARNING
 
 # import non-standard packages
 try:
@@ -89,8 +91,8 @@ class DALTONLoPropJob(calcit.dalton.DALTONJob):
             multipole_order -- order of the distributed multipoles (0 charges, 1 charges + dipoles, and so on)
             polarizability_order -- order of the polarizabilities. 0 none, 1: isotropic 2: anisotropic
         """
-        self.mul_order = kwargs.get('multipole_order', 2) # default to charges, dipoles and quadrupoles
-        self.pol_order = kwargs.get('polarizability_order', 2) # default to anisotropic dipole-polarizabilities
+        self.mul_order = kwargs.get('multipole_order', 2)  # default to charges, dipoles and quadrupoles
+        self.pol_order = kwargs.get('polarizability_order', 2)  # default to anisotropic dipole-polarizabilities
         calcit.dalton.DALTONJob.__init__(self, basename, **kwargs)
         self.runtype = 'loprop'
 
@@ -134,10 +136,8 @@ class DALTONPDEMonomerJob(DALTONPDEJob):
         DALTONPDEJob.__init__(self, basename, **kwargs)
         self.runtype = 'pde_monomer'
 
-
     def __str__(self):
         return "DALTON PDE Monomer ({0:s})".format(self.basename)
-
 
     def __repr__(self):
         return "DALTONPDEMonomerJob('{0:s}')".format(self.basename)
@@ -149,10 +149,8 @@ class DALTONPDEDimerJob(DALTONPDEJob):
         DALTONPDEJob.__init__(self, basename, **kwargs)
         self.runtype = 'pde_dimer'
 
-
     def __str__(self):
         return "DALTON PDE Dimer ({0:s})".format(self.basename)
-
 
     def __repr__(self):
         return "DALTONPDEDimerJob('{0:s}')".format(self.basename)
@@ -184,13 +182,51 @@ class DALTONPEExEnergyJob(calcit.dalton.DALTONJob):
         return "DALTONPEExEnergyJob('{0:s}')".format(self.basename)
 
 
+class DALTONPDEExEnergyJob(DALTONPEExEnergyJob):
+    def __init__(self, basename, **kwargs):
+        DALTONPEExEnergyJob.__init__(self, basename, **kwargs)
+        self.runtype = 'pdeex'
+
+    def _program_substitutions(self):
+        """ Substitutes information relevant
+            Obtaining the LoProp parameters requires the program to
+            know where DALTON is and where LoProp Is.
+        """
+        self._run_script_substitutions['PATH'] = os.environ.get('PATH')
+        self._run_script_substitutions['LD_LIBRARY_PATH'] = os.environ.get('LD_LIBRARY_PATH')
+        self._run_script_substitutions['PROGPATH'] = os.environ.get('DALTON')
+        self._run_script_substitutions['PDEOPT'] = "-put \"{}.h5\"".format(self.basename)
+
+        self._comp_chem_substitutions['NEXCITATIONS'] = self.nexcited_states
+        self._comp_chem_substitutions['PDEFILE'] = "{}.h5".format(self.basename)
+
+    def __str__(self):
+        return "DALTON PDE-EX ({0:s})".format(self.basename)
+
+    def __repr__(self):
+        return "DALTONPDEExEnergyJob('{0:s}')".format(self.basename)
+
+
+class SpectrePDEData(object):
+    """ Representation of PDE data in SPECTRE """
+    def __init__(self, num_bas, num_pols):
+        self._num_bas = num_bas
+        self._num_pols = num_pols
+
+    def get_num_bas(self):
+        return self._num_bas
+
+    def get_num_pols(self):
+        return self._num_pols
+
+
 class SpectreExcitedStateData(object):
     """ Representation of excited state data in SPECTRE """
 
     def __init__(self):
-        self._excitation_energies = [] # excitation energies
-        self._tr_dips = [] # transition dipoles
-        self.tr_q = [] # transition density fitted charges
+        self._excitation_energies = []  # excitation energies
+        self._tr_dips = []  # transition dipoles
+        self.tr_q = []  # transition density fitted charges
 
     @classmethod
     def from_data(cls, de, tr_d, tr_q):
@@ -248,7 +284,7 @@ class SpectreExcitedStateData(object):
         """
         osc = []
         for e, d in zip(self.get_excitation_energies(), self.get_transition_dipoles()):
-            osc.append( 2.0/3.0 * e * d.dot(d))
+            osc.append(2.0/3.0 * e * d.dot(d))
 
         return numpy.array(osc)
 
@@ -270,7 +306,7 @@ class ExpandPath(argparse.Action):
 
 
 def header(text, level, default_width=50):
-    """ utility function to generate header strings """
+    """ Utility function to generate header strings """
     min_width = len(text) * 2
     width = max(default_width, min_width)
     if level == 0:
@@ -325,7 +361,7 @@ def setup_chromophores(args):
         print()
 
     # molecule representation of each fragment
-    molecules = list(generate_molecules(molecule, fragmentation, args))
+    molecules = list(generate_molecules(molecule, fragmentation))
 
     # generate LoProp embedding potentials
     potentials, names = generate_loprop_potentials(molecules, args)
@@ -354,7 +390,7 @@ def obmolecule_from_filename_and_format(filename, file_format='pdb'):
     return mol
 
 
-def generate_molecules(obmol, frag, args):
+def generate_molecules(obmol, frag):
     """ Generates all molecules based on fragmenation
 
         Arguments:
@@ -366,10 +402,10 @@ def generate_molecules(obmol, frag, args):
     frag_names = frag.getFragmentNames()
     frag_charges = frag.getFragmentCharges()
     for i, (name, indices, charge) in enumerate(zip(frag_names, frag_indices, frag_charges)):
-        yield build_molecule_from_fragment(obmol, indices, name, charge, args)
+        yield build_molecule_from_fragment(obmol, indices, name, charge)
 
 
-def build_molecule_from_fragment(obmol, atom_indices, name, charge, args):
+def build_molecule_from_fragment(obmol, atom_indices, name, charge):
     """ Builds molecule from fragmentation data
 
         Arguments:
@@ -443,19 +479,7 @@ def generate_loprop_potentials(molecules, args):
     jobs, job_names = build_calcit_dalton_loprop_jobs(molecules, args)
 
     # process jobs
-    port = 2048
-    authorization_key = calcit.util.generate_auth_key("auto")
-    nodes = build_hostlist(args.potential_jobs_per_node, args.potential_cpus_per_job, args)
-    jobs_per_node = args.potential_jobs_per_node
-    work_dir = os.getcwd()
-    remote_shell = 'ssh'
-    calcit_paths = calcit.util.directories(os.environ['CALCIT'] + '/bin/calcit')
-    do_execute = not args.is_dryrun
-
-    calcit.process_jobs(port, authorization_key,
-                        jobs, nodes, jobs_per_node,
-                        work_dir, remote_shell,
-                        calcit_paths, do_execute)
+    process_jobs(jobs, args.potential_jobs_per_node, args.is_dryrun)
 
     # now all the initial loprop files should be ready, let us generate
     # potentials needed for embedding calculations later on.
@@ -463,9 +487,31 @@ def generate_loprop_potentials(molecules, args):
     return potentials, job_names
 
 
+def process_jobs(jobs, jobs_per_node, is_dryrun):
+    """ Processes all jobs given as input
+
+    :param jobs: the jobs to process
+    :type jobs: list
+    :param jobs_per_node: number of jobs to execute per node
+    :type jobs_per_node: int
+    :param is_dryrun: whether or not the the job should execute
+    :type is_dryrun: bool
+    """
+    port = 2048
+    authorization_key = calcit.util.generate_auth_key("auto")
+    nodes = build_hostlist()
+    work_dir = os.getcwd()
+    remote_shell = 'ssh'
+    calcit_paths = calcit.util.directories(os.environ['CALCIT'] + '/bin/calcit')
+    do_execute = not is_dryrun
+    calcit.process_jobs(port, authorization_key,
+                        jobs, nodes, jobs_per_node,
+                        work_dir, remote_shell,
+                        calcit_paths, do_execute)
+
+
 def print_option(key, value, val_fmt, indent=2, width=27):
-    indent_width = indent + 4
-    indent_fmt = "{0:>" + str(indent + 4) +"s}"
+    indent_fmt = "{0:>" + str(indent + 4) + "s}"
     fmt_key = indent_fmt.format("{0:<") + "{0:d}".format(width-indent) + "s}:"
     fmt_value = val_fmt.format(value)
     print(fmt_key.format(key) + " " + fmt_value)
@@ -613,29 +659,18 @@ def generate_pde_potentials(molecules, chroms, pots, args):
 
     # generate calcit jobs for DALTON PDE Monomer calculations
     jobs, job_names = build_calcit_dalton_pde_monomer_jobs(molecules, chroms, pots, args)
-
-    # process jobs
-    port = 2048
-    authorization_key = calcit.util.generate_auth_key("auto")
-    nodes = build_hostlist(args.potential_jobs_per_node, args.potential_cpus_per_job, args)
-    jobs_per_node = args.potential_jobs_per_node
-    work_dir = os.getcwd()
-    remote_shell = 'ssh'
-    calcit_paths = calcit.util.directories(os.environ['CALCIT'] + '/bin/calcit')
-    do_execute = not args.is_dryrun
-
-    calcit.process_jobs(port, authorization_key,
-                        jobs, nodes, jobs_per_node,
-                        work_dir, remote_shell,
-                        calcit_paths, do_execute)
+    process_jobs(jobs, args.potential_jobs_per_node, args.is_dryrun)
 
     # generate calcit jobs for DALTON PDE Dimer calculations
     jobs, job_names = build_calcit_dalton_pde_dimer_jobs(molecules, chroms, pots, args)
+    process_jobs(jobs, args.potential_jobs_per_node, args.is_dryrun)
 
-    calcit.process_jobs(port, authorization_key,
-                        jobs, nodes, jobs_per_node,
-                        work_dir, remote_shell,
-                        calcit_paths, do_execute)
+    # print("PDE PDE PDE")
+    # print()
+
+    # we build PDE potentials for each chromophore
+    # the jobs are stored on disk and no data is tranferred here.
+    build_pde_potentials(chroms, molecules, args.potential_pde_exch_factor)
 
     return job_names
 
@@ -655,15 +690,6 @@ def build_calcit_dalton_pde_monomer_jobs(molecules, chroms, pots, args):
         Returns:
         list of jobs for calcit and associated list of job names.
     """
-    # make potential for everything. Needed to store static part of potential
-    all_pot = pots[0]
-    for p in pots[1:]:
-        all_pot += p
-
-    if args.potential is not None:
-        all_pot += args.potential
-
-
     # we have two subjobs to complete for each chromophore
     jobs = []
     job_names = []
@@ -671,7 +697,7 @@ def build_calcit_dalton_pde_monomer_jobs(molecules, chroms, pots, args):
     for i, ii in enumerate(chroms, start=1):
         mi = molecules[ii]
 
-        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.getName())
+        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.getName())  # TODO: maybe fix because i and ii are different beasts.
 
         # unpack a potential zipfile with properties of a single
         # molecule: potential and possible excitation calculations.
@@ -688,29 +714,9 @@ def build_calcit_dalton_pde_monomer_jobs(molecules, chroms, pots, args):
             safe_create_dir(name)
             os.chdir(name)
 
-            all_pot.save('temp.pot')
-
-            with h5py.File("{0:s}_dalton_pde_monomer.h5".format(name), 'w') as h5:
-                # store core (chromophore) properties
-                try:
-                    core = h5.create_group("core_fragment")
-                except ValueError: # group already exists
-                    core = h5['core_fragment']
-                finally:
-                    core['num_nuclei'] = mi.getNumAtoms()
-                    core['charges'] = [a.getNuclearCharge() for a in mi.getAtoms()]
-                    core['coordinates'] = mi.getCoordinates()
-
-                # store properties of other fragment
-                try:
-                    fragment = h5.create_group("fragment")
-                except ValueError:  # group already exists
-                    fragment = h5['fragment']
-                finally:
-                    fragment['num_nuclei'] = mj.getNumAtoms()
-                    fragment['charges'] = list([a.getNuclearCharge() for a in mj.getAtoms()])
-                    fragment['coordinates'] = mj.getCoordinates()
-
+            potential = build_chromophore_potential(pots, args, ii)
+            potential.save('temp.pot')
+            write_monomer_h5_file(mi, mj, name)
             write_molecule_to_xyz(mj, name)
             jobs.append(build_calcit_dalton_pde_monomer_job(mj, name, args))
             job_names.append(name)
@@ -720,12 +726,35 @@ def build_calcit_dalton_pde_monomer_jobs(molecules, chroms, pots, args):
     return jobs, job_names
 
 
-#def potential_from_molecule(m):
-#    """ Builds a potential sans multipole moments and polarizabilities """
-#    p = pepytools.Potential()
-#    p.setCoordinates(m.getCoordinates())
-#    p.setLabels(m.getLabels())
-#    return p
+def write_monomer_h5_file(mi, mj, name):
+    """ Writes initial PDE monomer file
+
+        :param mi: core molecule
+        :param mj: embedding molecule
+        :param name: name of file
+        :tparam name: str
+
+    """
+    with h5py.File("{0:s}_dalton_pde_monomer.h5".format(name), 'w') as h5:
+        # store core (chromophore) properties
+        try:
+            core = h5.create_group("core_fragment")
+        except ValueError:  # group already exists
+            core = h5['core_fragment']
+        finally:
+            core['num_nuclei'] = mi.getNumAtoms()
+            core['charges'] = [a.getNuclearCharge() for a in mi.getAtoms()]
+            core['coordinates'] = mi.getCoordinates() * aa2au
+
+        # store properties of other fragment
+        try:
+            fragment = h5.create_group("fragment")
+        except ValueError:  # group already exists
+            fragment = h5['fragment']
+        finally:
+            fragment['num_nuclei'] = mj.getNumAtoms()
+            fragment['charges'] = list([a.getNuclearCharge() for a in mj.getAtoms()])
+            fragment['coordinates'] = mj.getCoordinates() * aa2au
 
 
 def build_calcit_dalton_pde_monomer_job(molecule, name, args):
@@ -755,7 +784,7 @@ def build_calcit_dalton_pde_dimer_jobs(molecules, chroms, pots, args):
         list of jobs for calcit and associated list of job names.
     """
     # make potential for everything. Needed to store static part of potential
-        # we have two subjobs to complete for each chromophore
+    # we have two subjobs to complete for each chromophore
     jobs = []
     job_names = []
 
@@ -786,16 +815,133 @@ def build_calcit_dalton_pde_dimer_jobs(molecules, chroms, pots, args):
 
 def build_calcit_dalton_pde_dimer_job(molecule, name, args):
     return DALTONPDEDimerJob(name,
-                               custom_run_script=args.potential_pde_dim_script,
-                               charge=molecule.getCharge(),
-                               basis_set=args.potential_pde_basis,
-                               cores_per_job=args.potential_cpus_per_job,
-                               scratch_directory=args.scratch_directory,
-                               dft_functional=args.potential_functional,
-                               )
+                             custom_run_script=args.potential_pde_dim_script,
+                             charge=molecule.getCharge(),
+                             basis_set=args.potential_pde_basis,
+                             cores_per_job=args.potential_cpus_per_job,
+                             scratch_directory=args.scratch_directory,
+                             dft_functional=args.potential_functional,
+                             )
 
 
-def build_hostlist(njpn, ncpj, args):
+def build_pde_potentials(chroms, molecules, repulsion_scale_factor):
+    """ Builds PDE potential files (.h5) from the PDE data for all chromophores
+
+        and writes it to disk.
+
+        This method can raise two different exceptions:
+        IOError -- if the file is not found
+        OSError -- if the scratch directory is not found
+
+        Arguments:
+        mols -- the molecule for which to construct the potential for
+
+        Returns:
+        The potential
+    """
+    print("building PDE potentials:")
+
+    pde_parms = chromophore_pde_parameters(chroms, molecules)
+
+    for i, ii in enumerate(chroms, start=1):
+        mi = molecules[ii]
+        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.getName())
+
+        i_chrom_parm = pde_parms[ii]
+        num_bas = i_chrom_parm.get_num_bas()
+        num_pols = i_chrom_parm.get_num_pols()
+
+        nuc_el_energy = 0.0
+        nuc_coordinates = []
+        nuc_charges = []
+        repulsion_matrix = numpy.zeros(num_bas*(num_bas+1)//2)
+        electrostatic_matrix = numpy.zeros(num_bas*(num_bas+1)//2)
+        fd_static_field = numpy.zeros(3*num_pols)
+
+        print("\n  - chromophore:", mi.getName())
+
+        for j, mj in enumerate(molecules, start=1):
+            if i == j:
+                continue
+
+            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.getName())
+            print("    - :", j, mj.getName())
+            os.chdir(name)
+
+            with h5py.File("{}_dalton_pde_dimer.h5".format(name), "r") as h5file:
+                prefactor = 1.0  # for MFCC we should change to +/- 1
+                nuc_el_energy += prefactor * h5file['core_fragment']['nuclear-electron energy'][()]
+                electrostatic_matrix += prefactor * h5file['core_fragment']['electrostatic matrix'][()]
+                repulsion_matrix += prefactor * repulsion_scale_factor * h5file['core_fragment']['exchange-repulsion matrix'][()]
+
+                nuc_coordinates.extend(h5file['fragment']['coordinates'])
+                nuc_charges.extend([prefactor * charge for charge in h5file['fragment']['charges']])
+                fd_static_field += prefactor * h5file['fragment']['electric fields'][()]
+
+            os.chdir("..")
+
+        # now we write the final chromophore file to the chromophore directory
+        # if it already exists, we delete it first because with h5 you cannot
+        # 'simply' overwrite values
+        os.chdir(i_chrom_name)
+        print("  - cwd:", os.getcwd())
+        if os.path.exists("{}.h5".format(i_chrom_name)):
+            os.remove("{}.h5".format(i_chrom_name))
+
+        with h5py.File("{}.h5".format(i_chrom_name), "w") as h5file:
+            h5file["num_bas"] = num_bas
+            h5file["num_fields"] = num_pols
+            h5file["num_nuclei"] = numpy.int32(len(nuc_coordinates))
+            h5file["electrostatic matrix"] = electrostatic_matrix
+            h5file["exchange-repulsion matrix"] = repulsion_matrix
+            h5file["nuclear charges"] = nuc_charges
+            h5file["nuclear coordinates"] = nuc_coordinates
+            h5file["nuclear-electron energy"] = nuc_el_energy
+            h5file["electric fields"] = fd_static_field
+        os.chdir("..")
+
+
+def chromophore_pde_parameters(chroms, molecules):
+    """Retrieves PDE properties for all chromophores in the system
+
+    :param chroms: chromophores in the system
+    :type chroms: list[int]
+    :param molecules: molecules in the system
+    :type molecules: list[pepytools.Molecule]
+    :return: pde parameters
+    :rtype: list[SpectrePDEData]
+    """
+
+    data = []
+
+    for i, ii in enumerate(chroms, start=1):
+        mi = molecules[ii]
+        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.getName())
+
+        for j, mj in enumerate(molecules, start=1):
+            if i == j:
+                continue
+
+            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.getName())
+            os.chdir(name)
+            data.append(pde_parameters_from_file(name))
+            os.chdir("..")
+            break  # just need the first one to get the data
+
+    assert len(data) == len(chroms)
+    return data
+
+
+def pde_parameters_from_file(name):
+    print(" -- reading pde parameters from file: '{}_dalton_pde_dimer.h5' -- ".format(name))
+    with h5py.File("{}_dalton_pde_dimer.h5".format(name), "r") as h5file:
+        num_bas = h5file['core_fragment']['num_bas'][0]
+        num_pols = h5file['fragment']['num_pols'][0]
+
+        return SpectrePDEData(num_bas, num_pols)
+
+
+def build_hostlist():
     """ Build and return hostlist
 
         if running through the SLURM queue system on a compute cluster
@@ -810,7 +956,7 @@ def build_hostlist(njpn, ncpj, args):
 
     # by default, we just assume that we are running
     # on one node (i.e. the one we are running on)
-    nodes = ['localhost'] # [socket.gethostname()]
+    nodes = ['localhost']  # [socket.gethostname()]
 
     slurm_nodelist = os.environ.get("SLURM_NODELIST", None)
     if slurm_nodelist is not None:
@@ -840,35 +986,6 @@ def build_loprop_potential(mol, name):
     potential = potential_from_loprop_data(mol, name)
     os.chdir("..")
     return potential
-
-
-def build_pde_potential(mol, name):
-    """ Builds a potential file from the PDE data
-
-        and optionally (currently never) writes it to disk.
-
-        This method can raise two different exceptions:
-        IOError -- if the file is not found
-        OSError -- if the scratch directory is not found
-
-        Arguments:
-        mol -- the molecule for which to construct the potential for
-        name -- the name (base of filename) of the file associated with the molecule
-
-        Returns:
-        The potential
-    """
-    print("building PE potential")
-    os.chdir(name)
-    raise IOError
-
-    #potential = potential_from_loprop_data(mol, name)
-    # if False:
-    #    with open("{0:s}.pot".format(name), 'w') as pot_file:
-    #        pot_file.write(str(potential))
-
-    os.chdir("..")
-    return None
 
 
 def potential_from_loprop_data(mol, name):
@@ -906,9 +1023,9 @@ def potential_from_loprop_data(mol, name):
 
         for i in range(nat):
             # skip coordinates in the data
-            tokens = map(float, loprop_file.readline().split()) [4:]
+            tokens = map(float, loprop_file.readline().split())[4:]
             for l in range(lmax+1):
-                if not mul_data.has_key(l):
+                if l not in mul_data:
                     mul_data[l] = []
 
                 offset = mul_offset[l]
@@ -972,7 +1089,14 @@ def compute_chromophores(mols, pots, chroms, args):
         functional = "RHF"
         if args.ex_functional is not None:
             functional = args.ex_functional
-        print_option("theory", "{0}/{1}".format(functional, args.ex_basis), "{0:s}")
+
+        pde_status = "PE"
+        if args.do_pde:
+            pde_status = "PDE"
+        print_option("polarizable density embedding", pde_status, "{0}")
+        theory = "{0}-{1}/{2}".format(pde_status, functional, args.ex_basis)
+        print_option("theory", theory, "{0:s}")
+
         if args.potential is not None:
             print_option("external potential", args.potential, "{0}")
 
@@ -994,23 +1118,7 @@ def compute_chromophores(mols, pots, chroms, args):
 
     # generate calcit jobs for DALTON calculation
     jobs, job_names = build_calcit_dalton_ex_jobs(mols, pots, chroms, args)
-
-
-    # process jobs
-    port = 2048
-    authorization_key = calcit.util.generate_auth_key("auto")
-    nodes = build_hostlist(args.ex_jobs_per_node, args.ex_cpus_per_job, args)
-    jobs_per_node = args.ex_jobs_per_node
-    work_dir = os.getcwd()
-    remote_shell = 'ssh'
-    calcit_paths = calcit.util.directories(os.environ['CALCIT'] + '/bin/calcit')
-    do_execute = not args.is_dryrun
-
-    calcit.process_jobs(port, authorization_key,
-                        jobs, nodes, jobs_per_node,
-                        work_dir, remote_shell,
-                        calcit_paths, do_execute)
-
+    process_jobs(jobs, args.ex_jobs_per_node, args.is_dryrun)
 
     data = compute_chromophore_properties(mols, chroms, job_names, args)
     assert(len(data) == len(chroms))
@@ -1030,7 +1138,7 @@ def compute_chromophores(mols, pots, chroms, args):
     return data
 
 
-def build_calcit_dalton_ex_jobs(molecules, pots, chroms, args):
+def build_calcit_dalton_ex_jobs(molecules, pots, chromophores, args):
     """ Builds list of DALTON jobs for excited state calculations
 
         Arguments:
@@ -1039,41 +1147,44 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chroms, args):
         chroms -- list of chromophores to evaluate
         args -- spectre settings object
     """
-
-    #
-    #print "build_calcit_dalton_ex_jobs"
-    #print "----"
-    #print "molecules   :", molecules
-    #print "potentials  :", pots
-    #print "chromophores:", chroms
-    #print "----"
     job_names = []
     jobs = []
-    for i, chrom in enumerate(chroms, start=1):
-        molecule = molecules[chrom]
-        potential = build_chromophore_potential(pots, args, chrom)
+    for i, i_chromophore in enumerate(chromophores, start=1):
+        molecule = molecules[i_chromophore]
+        potential = build_chromophore_potential(pots, args, i_chromophore)
 
         name = "{0:04d}_{1:s}".format(i, molecule.getName())
 
         safe_create_dir(name)
         os.chdir(name)
 
-        jobs.append(
-           DALTONPEExEnergyJob(name,
-               charge=molecule.getCharge(),
-               custom_run_script=args.ex_script,
-               basis_set=args.ex_basis,
-               cores_per_job=args.ex_cpus_per_job,
-               scratch_directory=args.scratch_directory,
-               dft_functional=args.ex_functional,
-               nexcited_states=args.ex_n)
-        )
+        if not args.do_pde:
+            jobs.append(
+                DALTONPEExEnergyJob(name,
+                                    charge=molecule.getCharge(),
+                                    custom_run_script=args.ex_script,
+                                    basis_set=args.ex_basis,
+                                    cores_per_job=args.ex_cpus_per_job,
+                                    scratch_directory=args.scratch_directory,
+                                    dft_functional=args.ex_functional,
+                                    nexcited_states=args.ex_n)
+            )
+        else:
+            jobs.append(
+                DALTONPDEExEnergyJob(name,
+                                     charge=molecule.getCharge(),
+                                     custom_run_script=args.ex_script,
+                                     basis_set=args.ex_basis,
+                                     cores_per_job=args.ex_cpus_per_job,
+                                     scratch_directory=args.scratch_directory,
+                                     dft_functional=args.ex_functional,
+                                     nexcited_states=args.ex_n)
+            )
 
-        potname = jobs[-1].get_jobname()
-        with open("{0:s}.pot".format(potname), "w") as pot_file:
-            pot_file.write(str(potential))
+        potential_name = jobs[-1].get_jobname()  # get most recently added job'
+        potential.save("{}.pot".format(potential_name))
+        job_names.append(potential_name)
 
-        job_names.append(potname)
         os.chdir("..")
 
     if len(jobs) == 0:
@@ -1082,7 +1193,7 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chroms, args):
     return jobs, job_names
 
 
-def compute_chromophore_properties(mols, chroms, job_names, args):
+def compute_chromophore_properties(molecules, chromophores, job_names, args):
     """ Extracts properties for chromophores from the excited state logfiles
 
         Arguments:
@@ -1091,22 +1202,22 @@ def compute_chromophore_properties(mols, chroms, job_names, args):
         job_names -- the names of the jobs
         args -- spectre settings object
     """
-    assert len(chroms) == len(job_names)
+    assert len(chromophores) == len(job_names)
 
     data = []
 
-    for i, chrom in enumerate(chroms, start=1):
+    for i, chrom in enumerate(chromophores, start=1):
         molecule = molecules[chrom]
         jobname = job_names[chrom]
 
         name = "{0:04d}_{1:s}".format(i, molecule.getName())
 
-        safe_create_dir(name) # probably not needed
+        safe_create_dir(name)  # probably not needed
         os.chdir(name)
 
         try:
             energies, tr_dips, tr_charges = spectre.readers.get_chromophore_peex_data(jobname, args.coupling_with_moments)
-        except IOError as e:
+        except IOError:
             if args.is_dryrun:
                 print("You requested --dryrun but the output file '{0:s}.out' was not found.".format(jobname))
                 print("Please re-run without --dryrun to compute all files.")
@@ -1136,6 +1247,9 @@ def couple_chromophores(molecules, chromophores, potentials, properties, args):
         :type potentials: list
         :param properties: chromophore properties
         :type properties: list
+        :param args: spectre settings object
+        :type args: argparse.Namespace
+
 
         :return: exciton energies, transition dipoles and oscillator strengths
         :rtype: (list[float], list[list], list[float])
@@ -1171,12 +1285,12 @@ def couple_chromophores(molecules, chromophores, potentials, properties, args):
     tr_dips = [prop.get_transition_dipoles() for prop in properties]
 
     # build coupling matrix
-    J = compute_total_coupling(molecules, chromophores, potentials, properties, args)
-    matstat(J)
-    F = numpy.diag(numpy.ravel(energies)) + J
+    coupling_matrix = compute_total_coupling(molecules, chromophores, potentials, properties, args)
+    matstat(coupling_matrix)
+    foerster_matrix = numpy.diag(numpy.ravel(energies)) + coupling_matrix
 
     # diagonalize to get coefficients
-    exciton_energies, v = numpy.linalg.eigh(F)
+    exciton_energies, v = numpy.linalg.eigh(foerster_matrix)
 
     # we need to ravel the top layer of the tr_dips only
     tr_dips_ravel = []
@@ -1207,43 +1321,69 @@ def couple_chromophores(molecules, chromophores, potentials, properties, args):
     return exciton_energies, numpy.asarray(exciton_tr_dips), numpy.asarray(exciton_osc_str)
 
 
-def compute_J0(mols, props, ichrom, jchrom, iex, jex, args):
-    """
-        Arguments:
-        mols -- molecules in the system
+def compute_direct_coupling(mols, props, ichrom, jchrom, iex, jex, args):
+    """ Computes the direct Coulomb coupling between chromophores
+
+        :param mols: molecules in the system
+        :type mols: list[spectre.molecule.Molecule]
+        :param props: excited state properties of the chromophores
+        :type props: list[SpectreExcitedStateData]
+        :param ichrom: the first chromophore of the system
+        :type ichrom: int
+        :param jchrom: the second chromophore of the system
+        :type jchrom: int
+        :param iex: the ith excited state of chromophore ichrom
+        :type iex: int
+        :param jex: the jth excited state of chromophore jchrom
+        :type jex: int
+        :param args: spectre settings object
+        :type args: argparse.Namespace
     """
     # extract the information we need
-
-    imol = mols[ichrom]
-    jmol = mols[jchrom]
-    coord_i = imol.getCoordinates() * aa2au
-    coord_j = jmol.getCoordinates() * aa2au
-
-    tr_q_i = props[ichrom].get_transition_density_fitted_charges()[iex]
-    tr_q_j = props[jchrom].get_transition_density_fitted_charges()[jex]
+    coord_i, tr_q_i = get_chromophore_moments(ichrom, iex, mols, props)
+    coord_j, tr_q_j = get_chromophore_moments(jchrom, jex, mols, props)
 
     if args.coupling_with_moments:
         if args.coupling_qfit_mom == 0:
-            return J0_tr_q_kernel(coord_i, coord_j, tr_q_i, tr_q_j)
+            return coulomb_coupling(coord_i, coord_j, tr_q_i, tr_q_j)
         else:
             raise NotImplementedError("J0 Not implemented for moments higher than charges.")
     else:
         raise NotImplementedError("Transition dipole J0 couplings not implemented yet.")
 
 
-def compute_J1(mols, pots, props, ichrom, jchrom, iex, jex, args):
-    # 1) build potential without I and J in and make it
-    #     #    a transition potential (i.e. 0'es in static charge dist)
+def get_chromophore_moments(ichrom, iex, mols, props):
+    imol = mols[ichrom]
+    coord_i = imol.getCoordinates() * aa2au
+    tr_q_i = props[ichrom].get_transition_density_fitted_charges()[iex]
+    return coord_i, tr_q_i
+
+
+def compute_indirect_coupling(mols, pots, props, ichrom, jchrom, iex, jex, args):
+    """ Computes the indirect Coulomb coupling between chromophores through a polarizable environment
+
+        :param mols: molecules in the system
+        :type mols: list[spectre.molecule.Molecule]
+        :param pots: potentials
+        :type pots: list[Potential]
+        :param props: excited state properties of the chromophores
+        :type props: list[SpectreExcitedStateData]
+        :param ichrom: the first chromophore of the system
+        :type ichrom: int
+        :param jchrom: the second chromophore of the system
+        :type jchrom: int
+        :param iex: the ith excited state of chromophore ichrom
+        :type iex: int
+        :param jex: the jth excited state of chromophore jchrom
+        :type jex: int
+        :param args: spectre settings object
+        :type args: argparse.Namespace
+    """
     potij = build_chromophore_potential(pots, args, ichrom, jchrom)
     potij.make_transition_potential()
 
-    imol = mols[ichrom]
-    jmol = mols[jchrom]
-    coord_i = imol.getCoordinates() * aa2au
-    coord_j = jmol.getCoordinates() * aa2au
-
-    tr_q_i = props[ichrom].get_transition_density_fitted_charges()[iex]
-    tr_q_j = props[jchrom].get_transition_density_fitted_charges()[jex]
+    coord_i, tr_q_i = get_chromophore_moments(ichrom, iex, mols, props)
+    coord_j, tr_q_j = get_chromophore_moments(jchrom, jex, mols, props)
 
     # we need the potentials from the two chromophores which are dependent
     # on how we used to compute J0
@@ -1257,16 +1397,16 @@ def compute_J1(mols, pots, props, ichrom, jchrom, iex, jex, args):
         raise NotImplementedError("Transition dipole J1 couplings not implemented yet.")
 
     # Solve for A.F(J) (eq 12 in 10.1021/acs.jctc.5b00470)
-    AF = potij + potj
-    polmat = pepytools.util.get_polarization_matrix(AF)
-    intmat = pepytools.util.get_interaction_matrix(AF)
-    field = pepytools.fields.get_static_field(AF)
+    pot = potij + potj
+    polmat = pepytools.util.get_polarization_matrix(pot)
+    intmat = pepytools.util.get_interaction_matrix(pot)
+    field = pepytools.fields.get_static_field(pot)
     s = pepytools.solvers.IterativeDIISSolver(polmat, intmat, field, verbose = False, threshold = args.coupling_inddip_eps)
     muind = s.Solve()
 
     # Now get field at induced dipoles to compute F(I).(A.F(J))
-    F = potij + poti
-    field = pepytools.fields.get_static_field(F)
+    pot = potij + poti
+    field = pepytools.fields.get_static_field(pot)
 
     return -field.dot(muind)
 
@@ -1304,8 +1444,8 @@ def compute_total_coupling(mols, chroms, pots, props, args):
     """
     n = len(chroms) * args.ex_n
 
-    J0 = numpy.zeros((n,n))
-    J1 = numpy.zeros_like(J0)
+    direct_coupling = numpy.zeros((n, n))
+    indirect_coupling = numpy.zeros_like(direct_coupling)
 
     t0 = numpy.asarray(time.time(), dtype=numpy.float64)
     if args.coupling_cpus > 1:
@@ -1316,37 +1456,41 @@ def compute_total_coupling(mols, chroms, pots, props, args):
         pool = multiprocessing.Pool(processes=args.coupling_cpus)
         for (chromophore_i, chromophore_j, iex, jex, imat, jmat) in chromophore_pair_ex_iterator(chroms, args):
             indices.append((imat, jmat))
-            j0_jobs.append(pool.apply(compute_J0, args=(mols, props, chromophore_i, chromophore_j, iex, jex, args)))
+            j0_jobs.append(
+                pool.apply(compute_direct_coupling, args=(mols, props, chromophore_i, chromophore_j, iex, jex, args))
+            )
             if args.do_polarization:
-                j1_jobs.append(pool.apply(compute_J1, args=(mols, pots, props, chromophore_i, chromophore_j, iex, jex, args,)))
+                j1_jobs.append(
+                    pool.apply(compute_indirect_coupling, args=(mols, pots, props, chromophore_i, chromophore_j, iex, jex, args,))
+                )
 
         for i, (imat, jmat) in enumerate(indices):
-            J0[imat, jmat] = j0_jobs[i]
-            J0[jmat, imat] = J0[imat, jmat]
+            direct_coupling[imat, jmat] = j0_jobs[i]
+            direct_coupling[jmat, imat] = direct_coupling[imat, jmat]
 
         if args.do_polarization:
             for i, (imat, jmat) in enumerate(indices):
-                J1[imat, jmat] = j1_jobs[i]
-                J1[jmat, imat] = J1[imat, jmat]
+                indirect_coupling[imat, jmat] = j1_jobs[i]
+                indirect_coupling[jmat, imat] = indirect_coupling[imat, jmat]
     else:
         # serial execution
         for (chromophore_i, chromophore_j, iex, jex, imat, jmat) in chromophore_pair_ex_iterator(chroms, args):
 
-            J0[imat, jmat] = compute_J0(mols, props, chromophore_i, chromophore_j, iex, jex, args)
-            J0[jmat, imat] = J0[imat, jmat]
+            direct_coupling[imat, jmat] = compute_direct_coupling(mols, props, chromophore_i, chromophore_j, iex, jex, args)
+            direct_coupling[jmat, imat] = direct_coupling[imat, jmat]
 
             if args.do_polarization:
-                J1[imat, jmat] = compute_J1(mols, pots, props, chromophore_i, chromophore_j, iex, jex, args)
-                J1[jmat, imat] = J1[imat, jmat]
+                indirect_coupling[imat, jmat] = compute_indirect_coupling(mols, pots, props, chromophore_i, chromophore_j, iex, jex, args)
+                indirect_coupling[jmat, imat] = indirect_coupling[imat, jmat]
 
     t1 = numpy.asarray(time.time(), dtype=numpy.float64)
     if args.verbose:
         print("total coupling time [s]: {0:6.2f}".format(t1 - t0))
 
-    return J0 + J1
+    return direct_coupling + indirect_coupling
 
 
-def J0_tr_q_kernel(coord_i, coord_j, tr_q_i, tr_q_j):
+def coulomb_coupling(coord_i, coord_j, tr_q_i, tr_q_j):
     """ computes the J0 coupling using partial atomic charges
 
         The charges are fitted to reproduce the ESP of a transition density
@@ -1365,23 +1509,23 @@ def J0_tr_q_kernel(coord_i, coord_j, tr_q_i, tr_q_j):
     assert len(coord_j) > 0
     assert len(coord_i) == len(tr_q_i)
     assert len(coord_j) == len(tr_q_j)
-    J0 = 0.0
+    coulomb_direct = 0.0
     for qi, ci in zip(tr_q_i, coord_i):
         for qj, cj in zip(tr_q_j, coord_j):
             dr = cj - ci
-            J0 += qi*qj / numpy.sqrt(dr.dot(dr))
-    return J0
+            coulomb_direct += qi*qj / numpy.sqrt(dr.dot(dr))
+    return coulomb_direct
 
 
 def build_chromophore_potential(potentials, args, *chroms):
     """ Build potential for chromophores listed in the args list
 
-        Arguments:
-        potentials -- all potentials for each part of the system
-        args -- spectre settings object
-
-        Variable Arguments:
-        chroms -- list of chromophores indices
+        :param potentials: all potentials for each part of the system
+        :type potentials: list[pepytools.Potential]
+        :param args: spectre settings object
+        :type args: argparse.Namespace
+        :param chroms: list of chromophores indices
+        :type chroms: list[int]
 
         note: the construction of a chromophore potential
               is a bit funky because of the way
@@ -1396,25 +1540,44 @@ def build_chromophore_potential(potentials, args, *chroms):
             continue
         idx_potentials.append(j)
 
+    if len(idx_potentials) == 0 and args.potential is None:
+        print("No external potentials defined. Are you sure this [gas phase calculation] is what you want?")
+        raise spectre.errors.SpectreValueError("No external potentials defined.")
 
-    # idx_potentials is a list of potentials we actually need
-    if len(idx_potentials) == 0:
-        if args.potential is not None:
-            chromophore_potential = pepytools.Potential.from_file(args.potential)
-        else:
-            raise ValueError("No external potentials defined. Are you sure this [gas phase calculation] is what you want?")
-    else:
-        idx = idx_potentials[0]
+    idx = idx_potentials[0]
+    chromophore_potential = potentials[idx]
+    for idx_potential in idx_potentials[1:]:
+        chromophore_potential += potentials[idx_potential]
 
-        # external 'constant' potentials are added first
-        if args.potential is not None:
-            chromophore_potential = pepytools.Potential.from_file(args.potential) + potentials[idx]
-        else:
-            chromophore_potential = potentials[idx]
-        for idx_potential in idx_potentials[1:]:
-            chromophore_potential = chromophore_potential + potentials[idx_potential]
+    if args.do_pde:
+        # removes static part of potential because it is accounted for
+        # by densities already
+        chromophore_potential.make_transition_potential()
+
+    if args.potential is not None:
+        chromophore_potential += pepytools.Potential.from_file(args.potential)
 
     return chromophore_potential
+
+    # # idx_potentials is a list of potentials we actually need
+    # # if it has no elements
+    # if len(idx_potentials) == 0:
+    #     if args.potential is not None:
+    #         chromophore_potential = pepytools.Potential.from_file(args.potential)
+    #     else:
+    #
+    # else:
+    #     idx = idx_potentials[0]
+    #
+    #     # external 'constant' potentials are added first
+    #     if args.potential is not None:
+    #         chromophore_potential = pepytools.Potential.from_file(args.potential) + potentials[idx]
+    #     else:
+    #         chromophore_potential = potentials[idx]
+    #     for idx_potential in idx_potentials[1:]:
+    #         chromophore_potential = chromophore_potential + potentials[idx_potential]
+    #
+    # return chromophore_potential
 
 
 def chromophore_pair_ex_iterator(chroms, args):
@@ -1486,16 +1649,15 @@ def output_dalton_ex_data(energies, oscillator_strengths, idx=1):
     return s_out[:-1]
 
 
-def cleanup_work_directories(mols):
+def cleanup_work_directories(molecules):
     """ Compresses working folders to zip and removes them
 
         Scope: work_dir
 
-        Arguments:
-        mols -- molecules
-        args -- spectre options
+        :param molecules: Molecules
+        :type molecules: list[spectre.Molecule]
     """
-    for i, molecule in enumerate(mols, start=1):
+    for i, molecule in enumerate(molecules, start=1):
         name = "{0:04d}_{1:s}".format(i, molecule.getName())
         shutil.make_archive(name, 'zip', '.', name)
         shutil.rmtree(name)
@@ -1581,14 +1743,15 @@ if __name__ == "__main__":
     potential_group.add_argument("-p", dest="potential", default=None, action=ExpandPath, metavar="POTENTIAL", help="Adds a 'constant' PE-potential to the calculation, for example a protein or solvent shell.")
     potential_group.add_argument("--potential-no-pol", dest="do_polarization", default=True, action="store_false", help="Set this flag to disable polarization effects. This will also remove screening in the couplings between chromophores.")
     potential_group.add_argument("--potential-isopol", dest="do_isopol", default=False, action="store_true", help="Set this flag to only do isotropic polarizabilities instead of the full anisotropic polarizabilities.")
-    potential_group.add_argument("--potential-multipole-order", type=int, default=2, choices=[0,1,2], help="Highest order multipole moment of the static part of the embedding potential. Choices are: %(choices)s. Default is %(default)s.")
+    potential_group.add_argument("--potential-multipole-order", type=int, default=2, choices=[0, 1, 2], help="Highest order multipole moment of the static part of the embedding potential. Choices are: %(choices)s. Default is %(default)s.")
     potential_group.add_argument("--potential-loprop-basis", metavar='BASIS', default="loprop-6-31+G*", help="Basis set to use for LoProp embedding potential calculations. Default is %(default)s.")
-    potential_group.add_argument("--potential-functional", metavar='FUNCTIONAL', default=None, help="Selects an DFT functional for excited state calculations. If not specified, HF is chosen as the default.")
-    potential_group.add_argument("--potential-loprop-script", default=os.environ['SPECTRE'] +'/share/dalton_loprop.bash', metavar="SCRIPT", action=ExpandPath, help="Script to the LoProp potential for each chromophore. Default: %(default)s.")
+    potential_group.add_argument("--potential-functional", metavar='FUNCTIONAL', default=None, help="Selects a DFT functional for potential calculations. If not specified, HF is chosen as the default.")
+    potential_group.add_argument("--potential-loprop-script", default=os.environ['SPECTRE'] + '/share/dalton_loprop.bash', metavar="SCRIPT", action=ExpandPath, help="Script to the LoProp potential for each chromophore. Default: %(default)s.")
     potential_group.add_argument("--potential-jobs-per-node", default=pot_jobs_per_node, type=int, metavar="JOBS_PER_NODE", help="Number of jobs to execute per node for potential calculation. This is number is usually equal to the number of cores available to you on a single node. Can be controlled with SLURM using the --ntasks-per-node option. Default is %(default)s.")
     potential_group.add_argument("--potential-cpus-per-job", default=pot_cpus_per_job, type=int, metavar="CPUS_PER_JOB", help="Number of cores per job. This number is usually low. Can be controlled with SLURM using the --cpus-per-task option. Default is %(default)s.")
     potential_group.add_argument("--potential-do-pde", dest="do_pde", default=False, action="store_true", help="Enables the use of PDEs. Default is false.")
     potential_group.add_argument("--potential-pde-basis", metavar='BASIS', default="6-31+G*", help="Basis set to use for PDE embedding potential calculations. Default is %(default)s.")
+    potential_group.add_argument("--potential-pde-exch-factor", default=0.8, type=float, metavar="FACTOR", help="Scaling factor for the exchange-repulsion term in PDE. Default is %(default)s")
     potential_group.add_argument("--potential-pde-mon-script", default=os.environ['SPECTRE'] + '/share/dalton_pde_monomer.bash', metavar="SCRIPT", action=ExpandPath, help="Script to generate momomeric part of PDE potential for each chromophore. Default: %(default)s.")
     potential_group.add_argument("--potential-pde-dim-script", default=os.environ['SPECTRE'] + '/share/dalton_pde_dimer.bash', metavar="SCRIPT", action=ExpandPath, help="Script to generate dimeric part of PDE potential for each chromophore. Default: %(default)s.")
 
@@ -1598,9 +1761,9 @@ if __name__ == "__main__":
     chr_group.add_argument('-a', metavar="ID", nargs='+', type=int, help="Appends fragment indices to list of chromophores that are to be coupled excitonically. Mutually exclusive with -r.")
     chr_group.add_argument("-n", dest='ex_n', type=int, metavar="N", default=4, help="Number of excited states N to compute for each chromophore. Default is %(default)s.")
     chr_group.add_argument("--ex-state", type=int, default=0, help="State(s) to couple between chromophores.")
-    chr_group.add_argument("--ex-basis", default="pcseg-0", metavar='BASIS', help="Basis set to use for the excited state calculations and coupling parameters. Default is %(default)s.")
-    chr_group.add_argument("--ex-functional", default=None, metavar='FUNCTIONAL', help="Selects a density functional for excited state calculations. If not specified, HF is chosen.")
-    chr_group.add_argument("--ex-script", default=os.environ['SPECTRE'] +'/share/dalton_excited.bash', metavar="SCRIPT", action=ExpandPath, help="Script to compute excited state calculations. Default: %(default)s.")
+    chr_group.add_argument("--ex-basis", default="6-31+G*", metavar='BASIS', help="Basis set to use for the excited state calculations and coupling parameters. Default is %(default)s.")
+    chr_group.add_argument("--ex-functional", default=None, metavar='FUNCTIONAL', help="Selects a DFT functional for excited state calculations. If not specified, HF is chosen.")
+    chr_group.add_argument("--ex-script", default=os.environ['SPECTRE'] + '/share/dalton_excited.bash', metavar="SCRIPT", action=ExpandPath, help="Script to compute excited state calculations. Default: %(default)s.")
     chr_group.add_argument("--ex-jobs-per-node", default=chr_jobs_per_node, type=int, metavar="JOBS_PER_NODE", help="Number of jobs to execute per node for embedded chromophores. This is number is usually lower than the potential counterpart. Default is %(default)s.")
     chr_group.add_argument("--ex-cpus-per-job", default=chr_cpus_per_job, type=int, metavar="CPUS_PER_JOB", help="Number of cores per job. This number should almost always be equal to the number of cores available on your node. Default is %(default)s.")
 
@@ -1650,19 +1813,19 @@ if __name__ == "__main__":
     # parameters for these molecules (specifically for J1)
     #
     # 2. Generate embedding potential for everything using FragIt and CalcIt
-    molecules, chromophores, potentials = setup_chromophores(INPUT_ARGS)
+    molecules_, chromophores_, potentials_ = setup_chromophores(INPUT_ARGS)
 
     # generate PDE potentials if needed.
     if INPUT_ARGS.do_pde:
-        generate_pde_potentials(molecules, chromophores, potentials, INPUT_ARGS)
+        generate_pde_potentials(molecules_, chromophores_, potentials_, INPUT_ARGS)
 
     #
     #
     # VIII. Computation of diagonal part of Foerster matrix along with
     # transition dipole moments (or transition density charges)
-    properties = compute_chromophores(molecules, potentials, chromophores, INPUT_ARGS)
+    properties_ = compute_chromophores(molecules_, potentials_, chromophores_, INPUT_ARGS)
 
-    if len(chromophores) > 1:
-        exciton_energies, exciton_tr_dips, excitation_osc_str = couple_chromophores(molecules, chromophores, potentials, properties, INPUT_ARGS)
+    if len(chromophores_) > 1:
+        energies_, tr_dips_, osc_str_ = couple_chromophores(molecules_, chromophores_, potentials_, properties_, INPUT_ARGS)
 
-    cleanup_work_directories(molecules)
+    cleanup_work_directories(molecules_)
