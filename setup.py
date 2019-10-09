@@ -4,7 +4,7 @@ import sys
 from distutils.core import setup
 
 # use the source code to get version information
-from src.strings import version_str
+from spectre.strings import version_str
 
 __doc__="""SPECTRE: Computes spectra of molecules in solution
 
@@ -29,8 +29,8 @@ def setup_spectre():
         long_description = "\n".join(doclines[2:]),      
         #classifiers = filter(None, classifiers.split("\n")),
         platforms = ["Any."],
-        package_dir={'spectre': 'src'},
-        packages=['spectre', 'spectre.molecule'],
+        package_dir={'spectre': 'spectre'},
+        packages=['spectre', 'spectre.molecool'],
         scripts=['bin/spectre'],
         data_files=[
             ('', ['README.md','LICENSE']),

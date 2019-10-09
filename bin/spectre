@@ -58,8 +58,9 @@ else:
     has_h5py = True
 
 # custom molecule class
-from spectre.molecule import Molecule, Atom
-from spectre.molecule.formatters import XYZFormatter
+from spectre.molecool.molecule import Molecule
+from spectre.molecool.atom import Atom
+from spectre.molecool.formatters import XYZMoleculeFormatter
 import spectre.errors
 import spectre.readers
 
@@ -368,7 +369,7 @@ def setup_chromophores(args):
 
     # make a subset of fragments that are chromophores
     # and their surrounding potentials
-    chromophores = [i for i, x in enumerate(molecules) if x.getName() in args.c]
+    chromophores = [i for i, x in enumerate(molecules) if x.get_name() in args.c]
 
     return molecules, chromophores, potentials
 
@@ -419,12 +420,12 @@ def build_molecule_from_fragment(obmol, atom_indices, name, charge):
         the molecule
     """
     mol = Molecule()
-    mol.setName(name)
-    mol.setCharge(charge)
+    mol.set_name(name)
+    mol.set_charge(charge)
 
     for atom_index in atom_indices:
         obatom = obmol.GetAtom(atom_index)
-        mol.addAtom(Atom(obatom.GetAtomicNum(),
+        mol.add_atom(Atom(obatom.GetAtomicNum(),
                     xyz=[obatom.GetX(), obatom.GetY(), obatom.GetZ()]))
 
     return mol
@@ -479,7 +480,7 @@ def generate_loprop_potentials(molecules, args):
     jobs, job_names = build_calcit_dalton_loprop_jobs(molecules, args)
 
     # process jobs
-    process_jobs(jobs, args.potential_jobs_per_node, args.is_dryrun)
+    process_calcit_jobs(jobs, args.potential_jobs_per_node, args.is_dryrun)
 
     # now all the initial loprop files should be ready, let us generate
     # potentials needed for embedding calculations later on.
@@ -487,8 +488,8 @@ def generate_loprop_potentials(molecules, args):
     return potentials, job_names
 
 
-def process_jobs(jobs, jobs_per_node, is_dryrun):
-    """ Processes all jobs given as input
+def process_calcit_jobs(jobs, jobs_per_node, is_dryrun):
+    """ Processes all CalcIt jobs given as input
 
     :param jobs: the jobs to process
     :type jobs: list
@@ -535,7 +536,7 @@ def build_calcit_dalton_loprop_jobs(molecules, args):
     job_names = []
     jobs = []
     for i, molecule in enumerate(molecules, start=1):
-        name = "{0:04d}_{1:s}".format(i, molecule.getName())
+        name = "{0:04d}_{1:s}".format(i, molecule.get_name())
 
         # unpack a potential zipfile with properties of a single
         # molecule: potential and possible excitation calculations.
@@ -604,7 +605,7 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
 
     return DALTONLoPropJob(name,
                            custom_run_script=args.potential_loprop_script,
-                           charge=molecule.getCharge(),
+                           charge=molecule.get_charge(),
                            basis_set=args.potential_loprop_basis,
                            cores_per_job=args.potential_cpus_per_job,
                            scratch_directory=args.scratch_directory,
@@ -621,10 +622,9 @@ def write_molecule_to_xyz(molecule, name):
         :type molecule: Molecule
         :type name: str
     """
-    s = "{0:d}\n{1:s}\n".format(molecule.getNumAtoms(), molecule.getName())
-    s += XYZFormatter.coordinates(list(molecule.getAtoms()))
+    formatter = XYZMoleculeFormatter(molecule)
     with open("{0:s}.xyz".format(name), 'w') as xyz_file:
-        xyz_file.write(s)
+        xyz_file.write(str(formatter))
 
 
 def generate_pde_potentials(molecules, chroms, pots, args):
@@ -659,11 +659,11 @@ def generate_pde_potentials(molecules, chroms, pots, args):
 
     # generate calcit jobs for DALTON PDE Monomer calculations
     jobs, job_names = build_calcit_dalton_pde_monomer_jobs(molecules, chroms, pots, args)
-    process_jobs(jobs, args.potential_jobs_per_node, args.is_dryrun)
+    process_calcit_jobs(jobs, args.potential_jobs_per_node, args.is_dryrun)
 
     # generate calcit jobs for DALTON PDE Dimer calculations
     jobs, job_names = build_calcit_dalton_pde_dimer_jobs(molecules, chroms, pots, args)
-    process_jobs(jobs, args.potential_jobs_per_node, args.is_dryrun)
+    process_calcit_jobs(jobs, args.potential_jobs_per_node, args.is_dryrun)
 
     # print("PDE PDE PDE")
     # print()
@@ -697,7 +697,7 @@ def build_calcit_dalton_pde_monomer_jobs(molecules, chroms, pots, args):
     for i, ii in enumerate(chroms, start=1):
         mi = molecules[ii]
 
-        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.getName())  # TODO: maybe fix because i and ii are different beasts.
+        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.get_name())  # TODO: maybe fix because i and ii are different beasts.
 
         # unpack a potential zipfile with properties of a single
         # molecule: potential and possible excitation calculations.
@@ -705,7 +705,7 @@ def build_calcit_dalton_pde_monomer_jobs(molecules, chroms, pots, args):
             if i == j:
                 continue
 
-            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.getName())
+            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.get_name())
 
             if zipfile.is_zipfile(name + ".zip"):
                 with zipfile.ZipFile(name + ".zip") as zf:
@@ -742,9 +742,9 @@ def write_monomer_h5_file(mi, mj, name):
         except ValueError:  # group already exists
             core = h5['core_fragment']
         finally:
-            core['num_nuclei'] = mi.getNumAtoms()
-            core['charges'] = [a.getNuclearCharge() for a in mi.getAtoms()]
-            core['coordinates'] = mi.getCoordinates() * aa2au
+            core['num_nuclei'] = mi.get_num_atoms()
+            core['charges'] = [a.get_nuclear_charge() for a in mi.get_atoms()]
+            core['coordinates'] = mi.get_coordinates() * aa2au
 
         # store properties of other fragment
         try:
@@ -752,15 +752,15 @@ def write_monomer_h5_file(mi, mj, name):
         except ValueError:  # group already exists
             fragment = h5['fragment']
         finally:
-            fragment['num_nuclei'] = mj.getNumAtoms()
-            fragment['charges'] = list([a.getNuclearCharge() for a in mj.getAtoms()])
-            fragment['coordinates'] = mj.getCoordinates() * aa2au
+            fragment['num_nuclei'] = mj.get_num_atoms()
+            fragment['charges'] = list([a.get_nuclear_charge() for a in mj.get_atoms()])
+            fragment['coordinates'] = mj.get_coordinates() * aa2au
 
 
 def build_calcit_dalton_pde_monomer_job(molecule, name, args):
     return DALTONPDEMonomerJob(name,
                                custom_run_script=args.potential_pde_mon_script,
-                               charge=molecule.getCharge(),
+                               charge=molecule.get_charge(),
                                basis_set=args.potential_pde_basis,
                                cores_per_job=args.potential_cpus_per_job,
                                scratch_directory=args.scratch_directory,
@@ -791,18 +791,18 @@ def build_calcit_dalton_pde_dimer_jobs(molecules, chroms, pots, args):
     for i, ii in enumerate(chroms, start=1):
         mi = molecules[ii]
 
-        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.getName())
+        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.get_name())
 
         for j, (mj, pj) in enumerate(zip(molecules, pots), start=1):
             if i == j:
                 continue
 
-            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.getName())
+            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.get_name())
             os.chdir(name)
 
             # also dump .xyz file with combined molecule
-            mol_combined = Molecule.fromMolecule(mi)
-            mol_combined.addAtoms(*list(mj.getAtoms()))
+            mol_combined = Molecule.from_molecule(mi)
+            mol_combined.addAtoms(*list(mj.get_atoms()))
             write_molecule_to_xyz(mol_combined, name)
 
             jobs.append(build_calcit_dalton_pde_dimer_job(mol_combined, name, args))
@@ -816,7 +816,7 @@ def build_calcit_dalton_pde_dimer_jobs(molecules, chroms, pots, args):
 def build_calcit_dalton_pde_dimer_job(molecule, name, args):
     return DALTONPDEDimerJob(name,
                              custom_run_script=args.potential_pde_dim_script,
-                             charge=molecule.getCharge(),
+                             charge=molecule.get_charge(),
                              basis_set=args.potential_pde_basis,
                              cores_per_job=args.potential_cpus_per_job,
                              scratch_directory=args.scratch_directory,
@@ -845,7 +845,7 @@ def build_pde_potentials(chroms, molecules, repulsion_scale_factor):
 
     for i, ii in enumerate(chroms, start=1):
         mi = molecules[ii]
-        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.getName())
+        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.get_name())
 
         i_chrom_parm = pde_parms[ii]
         num_bas = i_chrom_parm.get_num_bas()
@@ -858,14 +858,14 @@ def build_pde_potentials(chroms, molecules, repulsion_scale_factor):
         electrostatic_matrix = numpy.zeros(num_bas*(num_bas+1)//2)
         fd_static_field = numpy.zeros(3*num_pols)
 
-        print("\n  - chromophore:", mi.getName())
+        print("\n  - chromophore:", mi.get_name())
 
         for j, mj in enumerate(molecules, start=1):
             if i == j:
                 continue
 
-            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.getName())
-            print("    - :", j, mj.getName())
+            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.get_name())
+            print("    - :", j, mj.get_name())
             os.chdir(name)
 
             with h5py.File("{}_dalton_pde_dimer.h5".format(name), "r") as h5file:
@@ -916,13 +916,13 @@ def chromophore_pde_parameters(chroms, molecules):
 
     for i, ii in enumerate(chroms, start=1):
         mi = molecules[ii]
-        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.getName())
+        i_chrom_name = "{0:04d}_{1:s}".format(i, mi.get_name())
 
         for j, mj in enumerate(molecules, start=1):
             if i == j:
                 continue
 
-            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.getName())
+            name = "{0:s}_{1:04d}_{2:s}".format(i_chrom_name, j, mj.get_name())
             os.chdir(name)
             data.append(pde_parameters_from_file(name))
             os.chdir("..")
@@ -1004,8 +1004,8 @@ def potential_from_loprop_data(mol, name):
     mul_data = {}
     pol_data = []
 
-    coords = mol.getCoordinates() * aa2au
-    labels = [atom.getLabel() for atom in mol.getAtoms()]
+    coords = mol.get_coordinates() * aa2au
+    labels = [atom.get_label() for atom in mol.get_atoms()]
 
     filename = "{0:s}_dalton_loprop.loprop".format(name)
     with open(filename, 'r') as loprop_file:
@@ -1118,7 +1118,7 @@ def compute_chromophores(mols, pots, chroms, args):
 
     # generate calcit jobs for DALTON calculation
     jobs, job_names = build_calcit_dalton_ex_jobs(mols, pots, chroms, args)
-    process_jobs(jobs, args.ex_jobs_per_node, args.is_dryrun)
+    process_calcit_jobs(jobs, args.ex_jobs_per_node, args.is_dryrun)
 
     data = compute_chromophore_properties(mols, chroms, job_names, args)
     assert(len(data) == len(chroms))
@@ -1153,7 +1153,7 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chromophores, args):
         molecule = molecules[i_chromophore]
         potential = build_chromophore_potential(pots, args, i_chromophore)
 
-        name = "{0:04d}_{1:s}".format(i, molecule.getName())
+        name = "{0:04d}_{1:s}".format(i, molecule.get_name())
 
         safe_create_dir(name)
         os.chdir(name)
@@ -1161,7 +1161,7 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chromophores, args):
         if not args.do_pde:
             jobs.append(
                 DALTONPEExEnergyJob(name,
-                                    charge=molecule.getCharge(),
+                                    charge=molecule.get_charge(),
                                     custom_run_script=args.ex_script,
                                     basis_set=args.ex_basis,
                                     cores_per_job=args.ex_cpus_per_job,
@@ -1172,7 +1172,7 @@ def build_calcit_dalton_ex_jobs(molecules, pots, chromophores, args):
         else:
             jobs.append(
                 DALTONPDEExEnergyJob(name,
-                                     charge=molecule.getCharge(),
+                                     charge=molecule.get_charge(),
                                      custom_run_script=args.ex_script,
                                      basis_set=args.ex_basis,
                                      cores_per_job=args.ex_cpus_per_job,
@@ -1210,7 +1210,7 @@ def compute_chromophore_properties(molecules, chromophores, job_names, args):
         molecule = molecules[chrom]
         jobname = job_names[chrom]
 
-        name = "{0:04d}_{1:s}".format(i, molecule.getName())
+        name = "{0:04d}_{1:s}".format(i, molecule.get_name())
 
         safe_create_dir(name)  # probably not needed
         os.chdir(name)
@@ -1658,7 +1658,7 @@ def cleanup_work_directories(molecules):
         :type molecules: list[spectre.Molecule]
     """
     for i, molecule in enumerate(molecules, start=1):
-        name = "{0:04d}_{1:s}".format(i, molecule.getName())
+        name = "{0:04d}_{1:s}".format(i, molecule.get_name())
         shutil.make_archive(name, 'zip', '.', name)
         shutil.rmtree(name)
 
@@ -1707,7 +1707,7 @@ if __name__ == "__main__":
         env_errors += 1
 
     if env_errors > 0:
-        sys.exit("There were errors in the environment variables")
+        sys.exit("Please fix the above errors regarding the environment variables.")
 
     # The user can set the options for the potential calculations
     # through the --ntasks-per-node and --cpus-per-task options in the SLURM

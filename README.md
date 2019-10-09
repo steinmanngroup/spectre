@@ -5,6 +5,7 @@ SPECTRE is a tool to compute optical properties of molecules in any homo- or het
 
 ### Python
 Preferably a version 2.7 during the initial development phase.
+Later (post 2020 version 3.6+)
 
 ### Numpy
 A version that ships with python. SPECTRE requires nothing fancy functionality-wise.
