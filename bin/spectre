@@ -275,13 +275,13 @@ class SpectreExcitedStateData(object):
     def get_oscillator_strengths(self):
         """ Computes and returns the oscillator strengths of excitation
 
-            The oscillator strenth is computed from 2/3 dE |mu|
+            The oscillator strenth is computed from 2/3 dE |mu|^2
 
             where dE is an excitation energy and mu is the corresponding
             transition dipole moment.
 
-            Returns:
-            oscillator strengths for all excitations
+            :return: oscillator strengths for all excitations
+            :rtype: list[float]
         """
         osc = []
         for e, d in zip(self.get_excitation_energies(), self.get_transition_dipoles()):
