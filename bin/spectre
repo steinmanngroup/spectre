@@ -488,36 +488,6 @@ def generate_loprop_potentials(molecules, args):
     return potentials, job_names
 
 
-def process_calcit_jobs(jobs, jobs_per_node, is_dryrun):
-    """ Processes all CalcIt jobs given as input
-
-    :param jobs: the jobs to process
-    :type jobs: list
-    :param jobs_per_node: number of jobs to execute per node
-    :type jobs_per_node: int
-    :param is_dryrun: whether or not the the job should execute
-    :type is_dryrun: bool
-    """
-    port = 2048
-    authorization_key = calcit.util.generate_auth_key("auto")
-    nodes = build_hostlist()
-    work_dir = os.getcwd()
-    remote_shell = 'ssh'
-    calcit_paths = calcit.util.directories(os.environ['CALCIT'] + '/bin/calcit')
-    do_execute = not is_dryrun
-    calcit.process_jobs(port, authorization_key,
-                        jobs, nodes, jobs_per_node,
-                        work_dir, remote_shell,
-                        calcit_paths, do_execute)
-
-
-def print_option(key, value, val_fmt, indent=2, width=27):
-    indent_fmt = "{0:>" + str(indent + 4) + "s}"
-    fmt_key = indent_fmt.format("{0:<") + "{0:d}".format(width-indent) + "s}:"
-    fmt_value = val_fmt.format(value)
-    print(fmt_key.format(key) + " " + fmt_value)
-
-
 def build_calcit_dalton_loprop_jobs(molecules, args):
     """ Builds DALTON LoProp jobs and files for calcit
 
@@ -549,11 +519,13 @@ def build_calcit_dalton_loprop_jobs(molecules, args):
         # build a potential (but wait for later to actually build it)
         try:
             build_loprop_potential(molecule, name)
-        except (OSError, IOError) as e:
-            if type(e) is OSError:  # directory is not created
+        except (spectre.errors.SpectreLopropFolderNotFoundError,
+                spectre.errors.SpectreLopropFileNotFoundError) as e:
+
+            if type(e) is spectre.errors.SpectreLopropFolderNotFoundError:
                 safe_create_dir(name)
 
-            if type(e) is IOError:  # log-file is not found but we managed to change dir
+            if type(e) is spectre.errors.SpectreLopropFileNotFoundError:  # log-file is not found but we managed to change dir
                 os.chdir('..')
 
             os.chdir(name)
@@ -564,6 +536,36 @@ def build_calcit_dalton_loprop_jobs(molecules, args):
             job_names.append(name)
 
     return jobs, job_names
+
+
+def process_calcit_jobs(jobs, jobs_per_node, is_dryrun):
+    """ Processes all CalcIt jobs given as input
+
+    :param jobs: the jobs to process
+    :type jobs: list
+    :param jobs_per_node: number of jobs to execute per node
+    :type jobs_per_node: int
+    :param is_dryrun: whether or not the the job should execute
+    :type is_dryrun: bool
+    """
+    port = 2048
+    authorization_key = calcit.util.generate_auth_key("auto")
+    nodes = build_hostlist()
+    work_dir = os.getcwd()
+    remote_shell = 'ssh'
+    calcit_paths = calcit.util.directories(os.environ['CALCIT'] + '/bin/calcit')
+    do_execute = not is_dryrun
+    calcit.process_jobs(port, authorization_key,
+                        jobs, nodes, jobs_per_node,
+                        work_dir, remote_shell,
+                        calcit_paths, do_execute)
+
+
+def print_option(key, value, val_fmt, indent=2, width=27):
+    indent_fmt = "{0:>" + str(indent + 4) + "s}"
+    fmt_key = indent_fmt.format("{0:<") + "{0:d}".format(width-indent) + "s}:"
+    fmt_value = val_fmt.format(value)
+    print(fmt_key.format(key) + " " + fmt_value)
 
 
 def safe_create_dir(path):
@@ -602,6 +604,8 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
         pol_order = 1
     if not args.do_polarization:
         pol_order = 0
+
+    print("build_calcit_dalton_loprop_job:", name)
 
     return DALTONLoPropJob(name,
                            custom_run_script=args.potential_loprop_script,
@@ -982,7 +986,11 @@ def build_loprop_potential(mol, name):
         Returns:
         The potential
     """
-    os.chdir(name)
+    try:
+        os.chdir(name)
+    except FileNotFoundError:
+        raise spectre.errors.SpectreLopropFolderNotFoundError("No such file or directory: '{}'".format(name))
+
     potential = potential_from_loprop_data(mol, name)
     os.chdir("..")
     return potential
@@ -1008,12 +1016,14 @@ def potential_from_loprop_data(mol, name):
     labels = [atom.get_label() for atom in mol.get_atoms()]
 
     filename = "{0:s}_dalton_loprop.loprop".format(name)
+    if not os.path.exists(filename):
+        raise spectre.errors.SpectreLopropFileNotFoundError("No such file or directory: '{}'".format(filename))
     with open(filename, 'r') as loprop_file:
         line = loprop_file.readline()  # AA or AU
         if "AA" in line:
             raise spectre.errors.SpectrePotentialValueError("Expected units to be in AU.")
 
-        nat, lmax, amax, dum = map(int, loprop_file.readline().split())
+        nat, lmax, amax, dum = list(map(int, loprop_file.readline().split()))
         if nat == 0:
             raise spectre.errors.SpectrePotentialValueError("No atoms found.")
         if lmax > 2:
@@ -1023,7 +1033,7 @@ def potential_from_loprop_data(mol, name):
 
         for i in range(nat):
             # skip coordinates in the data
-            tokens = map(float, loprop_file.readline().split())[4:]
+            tokens = list(map(float, loprop_file.readline().split()))[4:]
             for l in range(lmax+1):
                 if l not in mul_data:
                     mul_data[l] = []
@@ -1051,7 +1061,7 @@ def potential_from_loprop_data(mol, name):
     #
     if len(pol_data) > 0:
         excl_data = {}
-        serials = range(mol.getNumAtoms())
+        serials = range(mol.get_num_atoms())
         for i in serials:
             excl_atom = []
             for j in serials:
@@ -1354,7 +1364,7 @@ def compute_direct_coupling(mols, props, ichrom, jchrom, iex, jex, args):
 
 def get_chromophore_moments(ichrom, iex, mols, props):
     imol = mols[ichrom]
-    coord_i = imol.getCoordinates() * aa2au
+    coord_i = imol.get_coordinates() * aa2au
     tr_q_i = props[ichrom].get_transition_density_fitted_charges()[iex]
     return coord_i, tr_q_i
 

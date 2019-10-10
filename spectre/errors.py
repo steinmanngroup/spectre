@@ -12,3 +12,14 @@ class SpectreExcitedStateValueError(SpectreValueError):
 
 class SpectreRuntimeError(RuntimeError):
     pass
+
+
+class SpectreFolderNotFoundError(FileNotFoundError):
+    pass
+
+class SpectreLopropFolderNotFoundError(FileNotFoundError):
+    pass
+
+
+class SpectreLopropFileNotFoundError(FileNotFoundError):
+    pass
