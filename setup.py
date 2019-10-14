@@ -30,7 +30,7 @@ def setup_spectre():
         #classifiers = filter(None, classifiers.split("\n")),
         platforms = ["Any."],
         package_dir={'spectre': 'spectre'},
-        packages=['spectre', 'spectre.molecool'],
+        packages=['spectre', 'spectre.molecool', 'spectre.ml'],
         scripts=['bin/spectre'],
         data_files=[
             ('', ['README.md','LICENSE']),
@@ -38,6 +38,9 @@ def setup_spectre():
                 'share/dalton_loprop.bash',
                 'share/dalton_pde_monomer.bash', 'share/dalton_pde_dimer.bash',
                 'share/dalton_excited.bash'
+            ]),
+            ('share/ml', [
+                'share/ml/WAT.npz'
             ])
         ]
   )
