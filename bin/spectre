@@ -14,7 +14,7 @@ import time
 import zipfile
 
 import numpy
-numpy.set_printoptions(precision=2, linewidth=100)
+numpy.set_printoptions(precision=4, linewidth=100)
 
 logging.basicConfig(level=logging.INFO)  # WARNING
 
@@ -32,6 +32,7 @@ except ImportError:
     sys.exit()
 else:
     import fragit.fragmentation
+    from fragit.fragmentation import Fragmentation
 
 try:
     import calcit
@@ -57,7 +58,16 @@ except ImportError:
 else:
     has_h5py = True
 
-# custom molecule class
+has_qml = False
+try:
+    import qml
+except ImportError:
+    print("Warning: QML not found. Machine-learned embedding potentials not supported.")
+else:
+    import spectre.ml
+    import spectre.ml.prediction
+    has_qml = True
+
 from spectre.molecool.molecule import Molecule
 from spectre.molecool.atom import Atom
 from spectre.molecool.formatters import XYZMoleculeFormatter
@@ -80,8 +90,7 @@ SPECTRE uses a three-step procedure to compute the exciton state of a molecule:
 
 
 class DALTONLoPropJob(calcit.dalton.DALTONJob):
-    """ A DALTON job to calculate LoProp properties
-    """
+    """ A DALTON job to calculate LoProp properties """
     def __init__(self, basename, **kwargs):
         """ Initializes a DALTON LoProp calculation
 
@@ -351,7 +360,7 @@ def setup_chromophores(args):
     if args.verbose:
         print(">>>> OUTPUT FROM FRAGIT <<<<")
     molecule = obmolecule_from_filename_and_format(args.input)
-    fragmentation = fragit.fragmentation.Fragmentation(molecule, conffile=args.frag_settings, verbose=False)
+    fragmentation = Fragmentation(molecule, conffile=args.frag_settings, verbose=False)
     fragmentation.setVerbose(args.verbose)
     fragmentation.beginFragmentation()
     fragmentation.doFragmentation()
@@ -375,14 +384,15 @@ def setup_chromophores(args):
 
 
 def obmolecule_from_filename_and_format(filename, file_format='pdb'):
-    """ Loads a molecule into an OpenBabel molecule.
+    """ Reads a molecule from disk into an OpenBabel molecule.
 
-        Arguments:
-        filename -- the file to load
-        file_format -- file format to load
+        :param filename: the file to load
+        :type filename: str
+        :param file_format: file format to load
+        :type file_format: str
 
-        Returns:
-        OpenBabel OBMol instance of the molecule
+        :return: OpenBabel OBMol instance of the molecule
+        :rtype: openbabel.OBMol
     """
     obc = openbabel.OBConversion()
     obc.SetInFormat(file_format)
@@ -392,12 +402,12 @@ def obmolecule_from_filename_and_format(filename, file_format='pdb'):
 
 
 def generate_molecules(obmol, frag):
-    """ Generates all molecules based on fragmenation
+    """ Generates all molecules based on :class:`Fragmentation`
 
-        Arguments:
-        obmol -- openbabel molecule
-        frag -- FragIt fragmentation of that molecule
-        args -- spectre options
+        :param obmol: the openbabel molecule
+        :type obmol: openbabel.OBMol
+        :param frag: the fragmentation results
+        :type frag: fragit.fragmentation.Fragmentation
     """
     frag_indices = frag.getFragments()
     frag_names = frag.getFragmentNames()
@@ -407,17 +417,18 @@ def generate_molecules(obmol, frag):
 
 
 def build_molecule_from_fragment(obmol, atom_indices, name, charge):
-    """ Builds molecule from fragmentation data
+    """ Builds molecule from fragmentation data and :class:`openbabel.OBMol` a molecule.
 
-        Arguments:
-        obmol -- openbabel molecule of entire structure
-        atom_indices -- atom indices to be extracted from obmol
-        name -- name of molecule from .pdb file
-        charge -- charge of molecule
-        args -- spectre options
-
-        Returns:
-        the molecule
+        :param obmol: the openbabel molecule
+        :type obmol: openbabel.OBMol
+        :param atom_indices: atom indices in the entire structure from the fragmentation
+        :type atom_indices: list[int]
+        :param name: the name of the molecule
+        :type name: str
+        :param charge: molecular charge for the fragment
+        :type charge: int
+        :return: the molecule representation of the fragment
+        :type: Molecule
     """
     mol = Molecule()
     mol.set_name(name)
@@ -436,6 +447,9 @@ def generate_loprop_potentials(molecules, args):
 
         SPECTRE uses the CalcIt framework to process individual jobs
 
+        :param args: spectre settings object
+        :type args: argparse.Namespace
+
         Arguments:
         molecules -- structures which is used to generate embedding potentials
         args -- spectre options
@@ -448,9 +462,15 @@ def generate_loprop_potentials(molecules, args):
         print(header("LoProp Settings:", 1))
 
         functional = "RHF"
+        basis = args.potential_loprop_basis
         if args.potential_functional is not None:
             functional = args.potential_functional
-        print_option("theory", "{0}/{1}".format(functional, args.potential_loprop_basis), "{0:s}")
+
+        if args.use_ml:
+            print_option("machine learning", "charge/isotropic dipole potential where possible", "{0:s}")
+            print("")
+
+        print_option("theory", "{0}/{1}".format(functional, basis), "{0:s}")
 
         stat_pot = "charges, dipoles and quadrupoles"
         dyna_pot = "electric dipole-dipole polarizabilities"
@@ -476,6 +496,12 @@ def generate_loprop_potentials(molecules, args):
     safe_create_dir(base)
     os.chdir(base)
 
+    # if ML is used, we make loprop files from QML
+    # we can later use this with the distance criterion to only compute
+    # some of the embedding potential with QML and the rest will be computed
+    if args.use_ml:
+        build_qml_loprop_jobs(molecules, args)
+
     # generate calcit jobs for DALTON LoProp calculation
     jobs, job_names = build_calcit_dalton_loprop_jobs(molecules, args)
 
@@ -488,6 +514,101 @@ def generate_loprop_potentials(molecules, args):
     return potentials, job_names
 
 
+def build_qml_loprop_jobs(molecules, args):
+    """ Builds LoProp output files from QML predictions
+
+    :param molecules: the molecules for which to generate potential parameters.
+    :type molecules: list[Molecule]
+    :param args: spectre settings object
+    :type args: argparse.Namespace
+    """
+
+    # store molecule names and indices so we can get parameters only for the
+    # molecules we know
+    molecule_names = {}
+    filenames = []
+    for i, molecule in enumerate(molecules, start=1):
+        mol_name = molecule.get_name()
+        if mol_name not in molecule_names:
+            molecule_names[mol_name] = []
+        molecule_names[mol_name].append(i-1)  # adds molecule index to list for later use
+        name = "{0:04d}_{1:s}".format(i, mol_name)
+
+        filenames.append("{0}/{0}.xyz".format(name))
+
+        # unpack a potential zipfile with properties of a single
+        # molecule: potential and possible excitation calculations.
+        if zipfile.is_zipfile(name + ".zip"):
+            with zipfile.ZipFile(name + ".zip") as zf:
+                zf.extractall()
+
+    # load ML data from file
+    for molecule_name in molecule_names:
+        ml_path = os.path.join(args.ml_path, "{0:s}.npz".format(molecule_name))
+        if os.path.isfile(ml_path):
+            with numpy.load(ml_path) as ml_data:
+                # extract the molecules we know about
+                indices = molecule_names[molecule_name]
+                ex_molecules = [molecules[i] for i in indices]
+                ex_filenames = [filenames[i] for i in indices]
+                if not args.is_dryrun:
+                    write_qml_loprop_files(ex_molecules, ex_filenames, ml_data)
+                    cleanup_work_directories(ex_molecules)
+        else:
+            print("ML parameters for {} not found. They will be calculated with LoProp.".format(molecule_name))
+
+
+def write_qml_loprop_files(molecules, filenames, ml_data):
+    """ Predicts atomic properties from QML and writes all files to disk
+
+    :param molecules:
+    :param filenames:
+    :param ml_data:
+    :return:
+    """
+
+    # we need TWO sets of alphas, i.e. one for charges and one for polarizabilites
+    all_charges, all_pols, max_size = spectre.ml.prediction.atomic_properties(filenames, ml_data)
+
+    for i, molecule in enumerate(molecules, start=1):
+        i_from = (i - 1) * max_size
+        i_to = i * max_size
+
+        # make sure atomic charges are integer charges
+        mol_charges = all_charges[i_from:i_to]
+        sum_charges = sum(mol_charges)
+        mol_charges -= sum_charges / max_size
+        mol_pols = all_pols[i_from:i_to]
+        mol_coord = molecule.get_coordinates() * aa2au
+        name = "{0:04d}_{1:s}".format(i, molecule.get_name())
+        try:
+            os.chdir(name)
+        except FileNotFoundError:
+            raise spectre.errors.SpectreLopropFolderNotFoundError("No such file or directory: '{}'".format(name))
+        else:
+            write_qml_loprop_file(mol_coord, mol_charges, mol_pols, name, max_size)
+            os.chdir("..")
+
+
+def write_qml_loprop_file(mol_coord, mol_charges, mol_pols, mol_name, max_size):
+    """ Writes a single
+
+    :param mol_coord: Coordinates of the molecule to write to the loprop file
+    :param mol_charges: atomic partial charges
+    :param mol_pols: atomic polarizabilities
+    :param mol_name: the name of the molecule
+    :param max_size: the number of atoms in the molecule
+    :return:
+    """
+    s = "AU\n"
+    s += "{0:d} {1:d} {2:d} 1\n".format(max_size, 0, 1)  # m0p1 potential
+    for c, q, p in zip(mol_coord, mol_charges, mol_pols):
+        s += "1 {0[0]:16.9f}{0[1]:16.9f}{0[2]:16.9f}{1:16.9f}{2:16.9f}\n".format(c, q, p)
+    s += "\nTime used in (ML) Loprop              :      0.00 (cpu)       0.00 (wall)"
+    with open("{0:s}_dalton_loprop.loprop".format(mol_name), 'w') as loprop_file:
+        loprop_file.write(s)
+
+
 def build_calcit_dalton_loprop_jobs(molecules, args):
     """ Builds DALTON LoProp jobs and files for calcit
 
@@ -496,12 +617,12 @@ def build_calcit_dalton_loprop_jobs(molecules, args):
                  However, since `job_names` below must _always_ have _all_
                  possible names, but the `jobs` array can be shorter.
 
-        Arguments:
-        molecules -- structures which is used to generate embedding potentials
-        args -- spectre options
-
-        Returns:
-        list of jobs for calcit and associated list of job names.
+        :param molecules: the molecules for which to generate potential parameters.
+        :type molecules: list[Molecule]
+        :param args: spectre settings object
+        :type args: argparse.Namespace
+        :return: list of jobs for calcit and associated list of job names.
+        :rtype: tuple[list[DALTONJob], list[str]]
     """
     job_names = []
     jobs = []
@@ -562,11 +683,19 @@ def process_calcit_jobs(jobs, jobs_per_node, is_dryrun):
 
 
 def print_option(key, value, val_fmt, indent=2, width=27):
+    """ Prints options
+
+    :param key: the keyword to use
+    :param value: the value to present
+    :param val_fmt: the format for the value
+    :param indent: indentation level
+    :param width: the width of the statement
+    :return:
+    """
     indent_fmt = "{0:>" + str(indent + 4) + "s}"
     fmt_key = indent_fmt.format("{0:<") + "{0:d}".format(width-indent) + "s}:"
     fmt_value = val_fmt.format(value)
     print(fmt_key.format(key) + " " + fmt_value)
-
 
 def safe_create_dir(path):
     """ Creates a directory safely
@@ -598,14 +727,15 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
 
     write_molecule_to_xyz(molecule, name)
 
-    # compute the different kinds of polarizablities
+    # choose level of multipoles
+    mul_order = args.potential_multipole_order
+
+    # choose level of polarizabilities
     pol_order = 2
     if args.do_isopol:
         pol_order = 1
     if not args.do_polarization:
         pol_order = 0
-
-    print("build_calcit_dalton_loprop_job:", name)
 
     return DALTONLoPropJob(name,
                            custom_run_script=args.potential_loprop_script,
@@ -614,7 +744,7 @@ def build_calcit_dalton_loprop_job(molecule, name, args):
                            cores_per_job=args.potential_cpus_per_job,
                            scratch_directory=args.scratch_directory,
                            dft_functional=args.potential_functional,
-                           multipole_order=args.potential_multipole_order,
+                           multipole_order=mul_order,
                            polarizability_order=pol_order)
 
 
@@ -736,7 +866,7 @@ def write_monomer_h5_file(mi, mj, name):
         :param mi: core molecule
         :param mj: embedding molecule
         :param name: name of file
-        :tparam name: str
+        :type name: str
 
     """
     with h5py.File("{0:s}_dalton_pde_monomer.h5".format(name), 'w') as h5:
@@ -911,7 +1041,7 @@ def chromophore_pde_parameters(chroms, molecules):
     :param chroms: chromophores in the system
     :type chroms: list[int]
     :param molecules: molecules in the system
-    :type molecules: list[pepytools.Molecule]
+    :type molecules: list[Molecule]
     :return: pde parameters
     :rtype: list[SpectrePDEData]
     """
@@ -946,16 +1076,15 @@ def pde_parameters_from_file(name):
 
 
 def build_hostlist():
-    """ Build and return hostlist
+    """ Build and return hostlist for the current machine
 
-        if running through the SLURM queue system on a compute cluster
-        the system will spawn jobs on each node assigned to the job
+        The hostlist generation is *only* implemented for localhost and SLURM.
 
-        Info:
-        Only implemented for localhost and SLURM.
+        :return: the nodelist to use for jobs
+        :rtype: list[str]
 
-        Returns:
-        the nodelist to use for jobs
+        .. note::
+        If running through the SLURM queue system on a compute cluster the system will spawn jobs on each node assigned to the job
     """
 
     # by default, we just assume that we are running
@@ -971,20 +1100,17 @@ def build_hostlist():
 
 
 def build_loprop_potential(mol, name):
-    """ Builds a potential file from the LoProp data
+    """ Builds a :class:`pepytools.Potential` from the LoProp data and optionally (currently never) writes it to disk.
 
-        and optionally (currently never) writes it to disk.
+        :param mol: the molecule for which to construct the potential for
+        :type mol: Molecule
+        :param name: the name (base of filename) of the file associated with the molecule
+        :type name: str
 
-        This method can raise two different exceptions:
-        IOError -- if the file is not found
-        OSError -- if the scratch directory is not found
+        :raises spectre.errors.SpectreLopropFolderNotFoundError: The Loprop folder can not be found.
 
-        Arguments:
-        mol -- the molecule for which to construct the potential for
-        name -- the name (base of filename) of the file associated with the molecule
-
-        Returns:
-        The potential
+        :returns: The potential
+        :rtype: pepytools.Potential
     """
     try:
         os.chdir(name)
@@ -997,14 +1123,17 @@ def build_loprop_potential(mol, name):
 
 
 def potential_from_loprop_data(mol, name):
-    """ Reads a LoProp data file and constructs a potential from it
+    """ Reads a LoProp data file and constructs a :class:`pepytools.Potential` from it
 
-        Arguments:
-        mol -- the molecule for which to construct the potential for
-        name -- the name (base of filename) of the file associated with the molecule
+        :param mol: the molecule for which to construct the potential for
+        :type mol: Molecule
+        :param name: the name (base of filename) of the file associated with the molecule
+        :type name: str
 
-        Returns:
-        The potential
+        :raises spectre.errors.SpectrePotentialValueError: The Loprop file can not be found.
+
+        :returns: The potential
+        :rtype: pepytools.Potential
     """
     mul_offset = {0: 1, 1: 3, 2: 6}
     pol_offset = {1: 1, 2: 6}
@@ -1760,6 +1889,8 @@ if __name__ == "__main__":
     potential_group.add_argument("--potential-jobs-per-node", default=pot_jobs_per_node, type=int, metavar="JOBS_PER_NODE", help="Number of jobs to execute per node for potential calculation. This is number is usually equal to the number of cores available to you on a single node. Can be controlled with SLURM using the --ntasks-per-node option. Default is %(default)s.")
     potential_group.add_argument("--potential-cpus-per-job", default=pot_cpus_per_job, type=int, metavar="CPUS_PER_JOB", help="Number of cores per job. This number is usually low. Can be controlled with SLURM using the --cpus-per-task option. Default is %(default)s.")
     potential_group.add_argument("--potential-do-pde", dest="do_pde", default=False, action="store_true", help="Enables the use of PDEs. Default is false.")
+    potential_group.add_argument("--potential-use-ml", dest="use_ml", default=False, action="store_true", help="Enables machine-learned LoProp embedding potentials. NB Forces an M0P1 potential.")
+    potential_group.add_argument("--potential-ml-path", dest="ml_path", default=os.environ['SPECTRE'] + '/share/ml', metavar="PATH", action=ExpandPath, help="Path to ML data.")
     potential_group.add_argument("--potential-pde-basis", metavar='BASIS', default="6-31+G*", help="Basis set to use for PDE embedding potential calculations. Default is %(default)s.")
     potential_group.add_argument("--potential-pde-exch-factor", default=0.8, type=float, metavar="FACTOR", help="Scaling factor for the exchange-repulsion term in PDE. Default is %(default)s")
     potential_group.add_argument("--potential-pde-mon-script", default=os.environ['SPECTRE'] + '/share/dalton_pde_monomer.bash', metavar="SCRIPT", action=ExpandPath, help="Script to generate momomeric part of PDE potential for each chromophore. Default: %(default)s.")
