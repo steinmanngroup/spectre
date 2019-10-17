@@ -4,8 +4,11 @@ from qml import Compound
 import qml.fchl
 import qml.math
 
+
 def representations_from_files(files, max_size, cut_distance):
-    """
+    """ Constructs FCHL representations directly from files
+
+        basically wraps :func:`compounds_from_files` and :func:`representations_from_compounds`
 
     :param files:
     :type files: list[str]
@@ -50,8 +53,16 @@ def representations_from_compounds(compounds, max_size, cut_distance):
 
 
 def restructure_representation(X):
-    nmol, nat, dim, cut = numpy.shape(X)
-    return X.reshape(nmol * nat, dim, cut)
+    """ Restructures the representations for when constructing the kernel
+
+        :param X: the representation to restructure
+        :type X: numpy.ndarray
+        :return: the restructured representation
+        :rtype: numpy.ndarray
+    """
+    number_of_molecules, nat, dim, cut = numpy.shape(X)
+    return X.reshape(number_of_molecules * nat, dim, cut)
+
 
 def atomic_properties(filenames, ml_data):
     alpha_p = ml_data['alpha_p']

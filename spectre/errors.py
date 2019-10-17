@@ -23,3 +23,6 @@ class SpectreLopropFolderNotFoundError(FileNotFoundError):
 
 class SpectreLopropFileNotFoundError(FileNotFoundError):
     pass
+
+class SpectrePEEXFileNotFoundError(FileNotFoundError):
+    pass
