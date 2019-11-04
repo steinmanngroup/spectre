@@ -40,7 +40,8 @@ def setup_spectre():
                 'share/dalton_excited.bash'
             ]),
             ('share/ml', [
-                'share/ml/WAT.npz'
+                'share/ml/WAT.npz',
+                'share/ml/ACE.npz'
             ])
         ]
   )
