@@ -379,15 +379,10 @@ def generate_loprop_potentials(molecules, args):
 
         SPECTRE uses the CalcIt framework to process individual jobs
 
-        :param args: spectre settings object
-        :type args: argparse.Namespace
-
-        Arguments:
-        molecules -- structures which is used to generate embedding potentials
-        args -- spectre options
-
-        Returns:
-        list of potentials corresponding to the molecules on input
+        :param list[molecool.Molecule] molecules:
+        :param argparse.Namespace args: spectre settings object
+        :return: list of potentials
+        :rtype: list[pepytools.potential.Potential]
     """
 
     if args.verbose:
@@ -1039,7 +1034,10 @@ def build_hostlist():
     slurm_nodelist = os.environ.get("SLURM_NODELIST", None)
     if slurm_nodelist is not None:
         o, e, dt = calcit.process.execute("scontrol show hostname")
-        nodes = list(set(o.split()))
+        # in python3 we might get a series of bytes and not
+        # a regular python string from the above, thus
+        # we need to decode it
+        nodes = [n.decode('utf-8') for n in set(o.split())]
 
     return nodes
 
