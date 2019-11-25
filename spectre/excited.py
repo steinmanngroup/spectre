@@ -2,6 +2,7 @@ import numpy
 
 from spectre.errors import SpectreExcitedStateValueError
 
+
 class SpectreExcitedStateData(object):
     """ Representation of excited state data in SPECTRE """
 
@@ -98,7 +99,7 @@ class SpectreExcitedStateData(object):
     def get_oscillator_strengths(self):
         """ Computes and returns the oscillator strengths of excitation
 
-            The oscillator strenth is computed from
+            The oscillator strength is computed from
 
             :math:`2/3 \\Delta E |\\mu_T|^2`
 
