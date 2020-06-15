@@ -1,5 +1,6 @@
 import numpy
 import os
+import re
 import os.path
 
 from spectre.errors import SpectrePEEXFileNotFoundError, SpectreExcitedStateValueError
@@ -50,9 +51,9 @@ def get_chromophore_peex_data(filename, coupling_with_moments):
                 parsing_eex_data = True  # flag we are parsing data now
 
             if tr_dip is not None:
-                if "@ Oscillator strength (LENGTH)" in line:
+                if re.search('@ Operator label: [XYZ]DIPLEN ; Transition moment', line):
                     tokens = line.split()
-                    tr_dip.append(float(tokens[5]))
+                    tr_dip.append(float(tokens[8]))
                     if len(tr_dip) == 3:
                         transition_dipoles.append(tr_dip)
 
